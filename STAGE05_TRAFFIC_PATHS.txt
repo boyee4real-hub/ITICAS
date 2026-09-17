@@ -1,0 +1,281 @@
+backend\app\archive_collector.py:16:    CorridorProbe, CorridorProbeObservation, ArchiveServiceState
+backend\app\archive_collector.py:19:from .corridor_intelligence import acquire_corridor_probe_evidence
+backend\app\archive_collector.py:57:        probes=db.scalar(select(func.count()).select_from(CorridorProbe)) or 0
+backend\app\archive_collector.py:58:        probe_obs=db.scalar(select(func.count()).select_from(CorridorProbeObservation).where(CorridorProbeObservation.provider_status=="ok")) or 0
+backend\app\archive_collector.py:72:            "last_probe_cycle_at":row.last_probe_cycle_at.isoformat() if row.last_probe_cycle_at else None,
+backend\app\archive_collector.py:75:            "last_probe_cycle_status":row.last_probe_cycle_status,
+backend\app\archive_collector.py:78:            "total_probe_cycles":row.total_probe_cycles,
+backend\app\archive_collector.py:81:            "corridor_probes":probes,
+backend\app\archive_collector.py:82:            "corridor_probe_observations":probe_obs,
+backend\app\archive_collector.py:86:            "probe_interval_seconds":int(settings.archive_probe_interval_seconds),
+backend\app\archive_collector.py:88:            "scope_note":"Autonomous collection covers configured active monitoring locations and configured corridor probes. A road never registered for monitoring cannot be reconstructed retrospectively from ITICAS's own archive."
+backend\app\archive_collector.py:123:async def run_probe_cycle():
+backend\app\archive_collector.py:126:            select(CorridorProbe.location_id).distinct().order_by(CorridorProbe.location_id)
+backend\app\archive_collector.py:132:            result=await acquire_corridor_probe_evidence(int(lid))
+backend\app\archive_collector.py:139:    return {"locations":len(location_ids),"successful_probe_requests":ok,"failed_probe_requests":failed,"details":details}
+backend\app\archive_collector.py:146:        self.last_probe=0.0
+backend\app\archive_collector.py:161:        self.last_probe=now-max(0,int(settings.archive_probe_interval_seconds))
+backend\app\archive_collector.py:178:                    if settings.archive_probe_collection_enabled and now-self.last_probe >= max(300,int(settings.archive_probe_interval_seconds)):
+backend\app\archive_collector.py:180:                            res=await run_probe_cycle()
+backend\app\archive_collector.py:181:                            status="completed" if not res["failed_probe_requests"] else "completed_with_errors"
+backend\app\archive_collector.py:183:                                row=_state(db); row.last_probe_cycle_at=_utcnow(); row.last_probe_cycle_status=status
+backend\app\archive_collector.py:184:                                row.total_probe_cycles=(row.total_probe_cycles or 0)+1; row.last_error=None if status=="completed" else f"{res['failed_probe_requests']} probe requests failed"; db.commit()
+backend\app\archive_collector.py:186:                            update_state(last_probe_cycle_at=_utcnow(),last_probe_cycle_status="failed",last_error=str(exc)[:2000])
+backend\app\archive_collector.py:187:                        self.last_probe=loop.time()
+backend\app\archive_intelligence.py:94:    probes = [t for t in active if t.get("target_type") == "probe"]
+backend\app\archive_intelligence.py:125:        "active_probes": len(probes),
+backend\app\archive_intelligence.py:169:        "select": "target_key,target_type,probe_sequence_no,name,sample_every_minutes,last_sampled_at,last_status,created_at",
+backend\app\archive_intelligence.py:170:        "local_location_id": f"eq.{int(location_id)}", "order": "target_type.asc,probe_sequence_no.asc"
+backend\app\archive_intelligence.py:203:            "probe_sequence_no": t.get("probe_sequence_no"), "sample_every_minutes": interval,
+backend\app\archive_intelligence.py:277:        "select": "target_key,target_type,probe_sequence_no,name,road_name,city,state,latitude,longitude,sample_every_minutes",
+backend\app\archive_intelligence.py:285:    fields = ["observed_at","target_type","target_name","probe_sequence_no","road_name","city","state","latitude","longitude",
+backend\app\archive_intelligence.py:294:            "probe_sequence_no": t.get("probe_sequence_no"), "road_name": t.get("road_name"), "city": t.get("city"), "state": t.get("state"),
+backend\app\config.py:36:    archive_probe_interval_seconds: int = 3600
+backend\app\config.py:40:    archive_probe_collection_enabled: bool = True
+backend\app\config.py:48:    supabase_default_probe_interval_minutes: int = 60
+backend\app\corridor_intelligence.py:7:from .database import SessionLocal, MonitoringLocation, CorridorProbe, CorridorProbeObservation
+backend\app\corridor_intelligence.py:8:from .tomtom_traffic import TomTomTrafficClient, ProviderRequestError, ProviderNotConfigured
+backend\app\corridor_intelligence.py:20:async def acquire_corridor_probe_evidence(location_id:int, provider_factory=TomTomTrafficClient):
+backend\app\corridor_intelligence.py:24:        probes=list(db.scalars(select(CorridorProbe).where(CorridorProbe.location_id==location_id).order_by(CorridorProbe.sequence_no)).all())
+backend\app\corridor_intelligence.py:25:    if not probes:
+backend\app\corridor_intelligence.py:26:        return {"status":"no_probes","location_id":location_id,"successful":0,"failed":0,"message":"Generate corridor probes first."}
+backend\app\corridor_intelligence.py:29:    for p in probes:
+backend\app\corridor_intelligence.py:37:                db.add(CorridorProbeObservation(
+backend\app\corridor_intelligence.py:38:                    probe_id=p.id, location_id=location_id, observed_at=observed_at,
+backend\app\corridor_intelligence.py:50:            rows.append({"probe_id":p.id,"sequence_no":p.sequence_no,"chainage_m":p.chainage_m,
+backend\app\corridor_intelligence.py:58:                db.add(CorridorProbeObservation(probe_id=p.id,location_id=location_id,observed_at=observed_at,
+backend\app\corridor_intelligence.py:61:            rows.append({"probe_id":p.id,"sequence_no":p.sequence_no,"chainage_m":p.chainage_m,"status":"failed","error_category":category})
+backend\app\corridor_intelligence.py:64:            rows.append({"probe_id":p.id,"sequence_no":p.sequence_no,"chainage_m":p.chainage_m,"status":"failed","error_category":type(exc).__name__})
+backend\app\corridor_intelligence.py:65:    return {"status":"ok" if successful else "failed","location_id":location_id,"probes":len(probes),"successful":successful,"failed":failed,"rows":rows}
+backend\app\corridor_intelligence.py:68:def corridor_analysis(location_id:int, days:int=30):
+backend\app\corridor_intelligence.py:70:        probes=list(db.scalars(select(CorridorProbe).where(CorridorProbe.location_id==location_id).order_by(CorridorProbe.sequence_no)).all())
+backend\app\corridor_intelligence.py:71:        if not probes:
+backend\app\corridor_intelligence.py:72:            return {"location_id":location_id,"probe_count":0,"observation_count":0,"status":"no_probes","rows":[]}
+backend\app\corridor_intelligence.py:73:        ids=[p.id for p in probes]
+backend\app\corridor_intelligence.py:77:        obs=list(db.scalars(select(CorridorProbeObservation).where(
+backend\app\corridor_intelligence.py:78:            CorridorProbeObservation.probe_id.in_(ids),
+backend\app\corridor_intelligence.py:79:            CorridorProbeObservation.observed_at>=cutoff,
+backend\app\corridor_intelligence.py:80:            CorridorProbeObservation.provider_status=="ok"
+backend\app\corridor_intelligence.py:81:        ).order_by(CorridorProbeObservation.observed_at)).all())
+backend\app\corridor_intelligence.py:82:    by_probe={p.id:[] for p in probes}
+backend\app\corridor_intelligence.py:83:    for o in obs: by_probe.setdefault(o.probe_id,[]).append(o)
+backend\app\corridor_intelligence.py:85:    for p in probes:
+backend\app\corridor_intelligence.py:86:        rr=by_probe.get(p.id,[])
+backend\app\corridor_intelligence.py:92:            "probe_id":p.id,"sequence_no":p.sequence_no,"chainage_m":p.chainage_m,
+backend\app\corridor_intelligence.py:107:        r["corridor_z_score"]=round(z,4) if z is not None else None
+backend\app\corridor_intelligence.py:113:        "location_id":location_id,"period_days":days,"probe_count":len(probes),"observation_count":len(obs),
+backend\app\corridor_intelligence.py:114:        "probes_with_repeated_evidence":repeated,"inferential_hotspot_ready":inferential_ready,
+backend\app\corridor_intelligence.py:115:        "scientific_note":"Corridor z-scores are screening indicators. Gi*/Local Moran inference remains withheld until spatial and repeated-evidence requirements are met.",
+backend\app\corridor_intelligence.py:126:        probe_count=db.scalar(select(func.count(CorridorProbe.id)).where(CorridorProbe.location_id==location_id)) or 0
+backend\app\corridor_intelligence.py:127:        probe_obs=db.scalar(select(func.count(CorridorProbeObservation.id)).where(CorridorProbeObservation.location_id==location_id, CorridorProbeObservation.provider_status=="ok")) or 0
+backend\app\corridor_intelligence.py:131:        {"step":2,"name":"Prepare road / corridor","complete":geom>=2 and probe_count>=2,"action":"Generate corridor probes after traffic geometry is available."},
+backend\app\corridor_intelligence.py:132:        {"step":3,"name":"Collect evidence","complete":probe_obs>=probe_count and probe_count>0,"action":"Run corridor traffic scan; field GNSS is required only when the research objective demands field GPS/GNSS evidence."},
+backend\app\corridor_intelligence.py:133:        {"step":4,"name":"Run research analysis","complete":obj is not None and obj["complete_objectives"]>=2,"action":"Run research analysis to update objectives and corridor intelligence."},
+backend\app\corridor_intelligence.py:138:    return {"steps":steps,"next_step":next_step,"probe_count":probe_count,"probe_observations":probe_obs,
+backend\app\database.py:292:class CorridorProbe(Base):
+backend\app\database.py:293:    __tablename__ = "corridor_probes"
+backend\app\database.py:294:    __table_args__ = (Index("ix_probe_location_seq", "location_id", "sequence_no"),)
+backend\app\database.py:305:class CorridorProbeObservation(Base):
+backend\app\database.py:306:    __tablename__ = "corridor_probe_observations"
+backend\app\database.py:308:        Index("ix_probe_obs_probe_time", "probe_id", "observed_at"),
+backend\app\database.py:309:        Index("ix_probe_obs_location_time", "location_id", "observed_at"),
+backend\app\database.py:312:    probe_id: Mapped[int] = mapped_column(ForeignKey("corridor_probes.id"), index=True)
+backend\app\database.py:338:    last_probe_cycle_at: Mapped[datetime | None] = mapped_column(DateTime, nullable=True)
+backend\app\database.py:341:    last_probe_cycle_status: Mapped[str | None] = mapped_column(String(80), nullable=True)
+backend\app\database.py:344:    total_probe_cycles: Mapped[int] = mapped_column(Integer, default=0)
+backend\app\diagnostics.py:9:async def _probe(url:str, params:dict|None=None):
+backend\app\diagnostics.py:30:async def _weather_probe():
+backend\app\diagnostics.py:39:    search_task=_probe("https://api.tomtom.com/search/2/search/Abuja.json",{"key":key,"countrySet":"NG","limit":1}) if key else asyncio.sleep(0,result={"status":"missing_credential"})
+backend\app\diagnostics.py:40:    flow_task=_probe("https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json",{"key":key,"point":"9.0765,7.3986","unit":"kmph"}) if key else asyncio.sleep(0,result={"status":"missing_credential"})
+backend\app\diagnostics.py:41:    search,flow,weather,tomdns,metdns,osmdns=await asyncio.gather(search_task,flow_task,_weather_probe(),_dns_async("api.tomtom.com"),_dns_async("api.open-meteo.com"),_dns_async("tile.openstreetmap.org"))
+backend\app\diagnostics.py:42:    return {"scope":"Nigeria","checked_at":__import__('datetime').datetime.now(__import__('datetime').timezone.utc).isoformat(),"tomtom_key":{"status":"present" if key else "missing","exposed":False},"tomtom_search":search,"tomtom_traffic_flow":flow,"weather":weather,"dns":{"api.tomtom.com":tomdns,"open-meteo.com":metdns,"tile.openstreetmap.org":osmdns},"independent_traffic_benchmark":{"status":"not_configured","message":"Provider-reference validation is explicit; an independent Nigeria-wide traffic ground-truth adapter is not yet configured."},"standardized_environment_reference":{"status":"available_on_demand","dataset":"ERA5-Land reanalysis","traffic_ground_truth":False}}
+backend\app\historical_traffic.py:79:        # The UI warns that a live segment geometry should preferably be acquired first.
+backend\app\historical_traffic.py:140:                "probeSource":"ALL"
+backend\app\main.py:15:    User, UserPermission, AuditLog, BenchmarkSource, HistoricalBackfillJob, HistoricalTrafficSample, ResearchSurveySession, GNSSTrackPoint, CorridorProbe, CorridorProbeObservation, ArchiveServiceState
+backend\app\main.py:18:from .tomtom_traffic import TomTomTrafficClient
+backend\app\main.py:19:from .traffic_service import acquire_location_traffic_data, LocationNotFound, MissingCoordinates, ProviderUnavailable
+backend\app\main.py:36:from .research_engine import research_catalog, objective_matrix, survey_summary, ensure_corridor_probes, build_research_package, build_individual_tool_output
+backend\app\main.py:38:from .corridor_intelligence import acquire_corridor_probe_evidence, corridor_analysis, workflow_status
+backend\app\main.py:733:@app.post("/api/research/corridor-scan/{location_id}")
+backend\app\main.py:734:async def research_corridor_scan(location_id:int, request:Request):
+backend\app\main.py:736:    try:data=await acquire_corridor_probe_evidence(location_id)
+backend\app\main.py:738:    audit("research.corridor_scan",request,actor.id,"monitoring_location",str(location_id))
+backend\app\main.py:741:@app.get("/api/research/corridor-analysis/{location_id}")
+backend\app\main.py:742:async def research_corridor_analysis(location_id:int, request:Request, days:int=30):
+backend\app\main.py:744:    return corridor_analysis(location_id,days)
+backend\app\main.py:760:@app.post("/api/research/corridor-probes/{location_id}")
+backend\app\main.py:761:async def research_corridor_probes(location_id:int, request:Request, spacing_m:int=100):
+backend\app\main.py:763:    result=ensure_corridor_probes(location_id,spacing_m)
+backend\app\main.py:793:                raise HTTPException(422, quality.get("reason") or "GNSS point is outside the selected study corridor.")
+backend\app\main.py:935:    provider=TomTomTrafficClient()
+backend\app\main.py:938:@app.post("/api/traffic/acquire/{location_id}")
+backend\app\main.py:939:async def acquire_traffic(location_id:int,request:Request):
+backend\app\main.py:940:    actor=require_permission(request,"traffic:acquire")
+backend\app\main.py:941:    try:result=await acquire_location_traffic_data(location_id)
+backend\app\main.py:945:    audit("traffic.acquire",request,actor.id,"location",str(location_id))
+backend\app\main.py:965:    if not TomTomTrafficClient().configured:raise HTTPException(503,"TomTom Traffic API is not configured.")
+backend\app\monitoring.py:8:from .tomtom_traffic import TomTomTrafficClient
+backend\app\monitoring.py:9:from .traffic_service import acquire_location_traffic_data
+backend\app\monitoring.py:12:    def __init__(self, acquire_func=acquire_location_traffic_data):
+backend\app\monitoring.py:13:        self.acquire_func = acquire_func
+backend\app\monitoring.py:29:        return TomTomTrafficClient().configured
+backend\app\monitoring.py:90:            provider = TomTomTrafficClient()
+backend\app\monitoring.py:134:                    result = await self.acquire_func(location_id)
+backend\app\prediction_context.py:11:from .database import SessionLocal, MonitoringLocation, TrafficIncident, CorridorProbe, CorridorProbeObservation
+backend\app\prediction_context.py:80:def _probe_context(location_id: int) -> dict[str, Any]:
+backend\app\prediction_context.py:83:        probes = list(db.scalars(select(CorridorProbe).where(CorridorProbe.location_id == location_id)).all())
+backend\app\prediction_context.py:84:        ids = [p.id for p in probes]
+backend\app\prediction_context.py:86:            select(CorridorProbeObservation).where(
+backend\app\prediction_context.py:87:                CorridorProbeObservation.location_id == location_id,
+backend\app\prediction_context.py:88:                CorridorProbeObservation.observed_at >= _db_dt(cutoff),
+backend\app\prediction_context.py:89:                CorridorProbeObservation.provider_status == "ok",
+backend\app\prediction_context.py:90:            ).order_by(CorridorProbeObservation.observed_at.desc())
+backend\app\prediction_context.py:92:    by_probe: dict[int, list[float]] = defaultdict(list)
+backend\app\prediction_context.py:95:            by_probe[int(r.probe_id)].append(float(r.congestion_index))
+backend\app\prediction_context.py:96:    probe_means = {pid: sum(vals)/len(vals) for pid, vals in by_probe.items() if vals}
+backend\app\prediction_context.py:97:    vals = list(probe_means.values())
+backend\app\prediction_context.py:100:        "configured_probes": len(probes),
+backend\app\prediction_context.py:101:        "probes_with_recent_data": len(probe_means),
+backend\app\prediction_context.py:102:        "recent_probe_observations": len(obs),
+backend\app\prediction_context.py:103:        "mean_recent_probe_ci": round(sum(vals)/len(vals), 4) if vals else None,
+backend\app\prediction_context.py:104:        "moderate_or_worse_probe_share_pct": round(hotspot_share, 2) if hotspot_share is not None else None,
+backend\app\prediction_context.py:105:        "interpretation": "Probe context describes current spatial heterogeneity along the monitored corridor. It does not fabricate future hotspot positions.",
+backend\app\prediction_context.py:127:    probes = _probe_context(location_id)
+backend\app\prediction_context.py:146:        "corridor_probes": probes,
+backend\app\prediction_engine.py:431:    probe_share = ((context.get("corridor_probes") or {}).get("moderate_or_worse_probe_share_pct")) if isinstance(context, dict) else None
+backend\app\prediction_engine.py:444:        if probe_share is not None and float(probe_share) >= 25: flags.append("corridor_probe_congestion_context")
+backend\app\prediction_engine.py:521:                "External weather, incident and corridor context is preserved separately from the validated traffic-history forecast unless a road-specific context effect is empirically calibrated.",
+backend\app\prediction_reporting.py:213:    c=result.get("external_context") or {}; w=c.get("weather_summary") or {}; inc=c.get("incidents") or {}; pr=c.get("corridor_probes") or {}; dt=c.get("day_type") or {}; loc=result.get("location") or {}
+backend\app\prediction_reporting.py:219:        ("Recent corridor probes", pr.get("probes_with_recent_data")),
+backend\app\prediction_reporting.py:220:        ("Probe moderate+ share (%)", pr.get("moderate_or_worse_probe_share_pct")),
+backend\app\prediction_reporting.py:229:    return _svg_wrap(f"PREDICTION CONTEXT DASHBOARD — {loc.get('name','Selected road')}", "Weather, incidents, corridor probes and day-type context", '\n'.join(body), 1400, 900)
+backend\app\prediction_reporting.py:234:    for section in ("weather_summary","incidents","corridor_probes","day_type"):
+backend\app\prediction_reporting.py:341:        html=f'''<!doctype html><html><head><meta charset="utf-8"><title>ITICAS Prediction Decision Brief</title><style>body{{font-family:Arial,sans-serif;max-width:1000px;margin:40px auto;color:#172033;line-height:1.5}}h1{{font-size:30px}}table{{width:100%;border-collapse:collapse}}td,th{{border:1px solid #ccd5df;padding:9px;text-align:left}}.note{{background:#eef6fb;padding:14px;border-left:4px solid #0284c7}}</style></head><body><h1>ITICAS Prediction Decision Brief — {escape(str(loc.get('name') or 'Selected road'))}</h1><p>{escape(str(loc.get('city') or ''))}, {escape(str(loc.get('state') or ''))}, Nigeria</p><div class="note">Selected model: <b>{escape(str((result.get('model') or {}).get('selected') or '—'))}</b> · Evidence grade: <b>{escape(str((result.get('readiness') or {}).get('grade') or '—'))}</b></div><h2>Decision metrics</h2><table>{metrics_html}</table><h2>Decision signals</h2><ul>{brief}</ul><h2>External context</h2><p>Weather, incident, corridor-probe and day-type context is included in the package. ITICAS keeps this context separate from the validated traffic-history forecast mean unless a road-specific effect has been empirically calibrated.</p><h2>Scientific limitations</h2><ul>{''.join(f'<li>{escape(str(x))}</li>' for x in result.get('limitations') or [])}</ul><p><b>Developed by Dr. Oyeyode A.O. MNIS, MGEOSON, MNAG</b></p></body></html>'''
+backend\app\reporting.py:26:from .database import SessionLocal, TrafficObservation, MonitoringLocation, CorridorProbe, CorridorProbeObservation
+backend\app\reporting.py:201:    if ci>=.5 or heavy>=30: rec.append('Prioritise corridor-level operational review, intersection control assessment and recurring bottleneck diagnosis.')
+backend\app\reporting.py:204:    if cov<40: rec.append('Increase observation coverage and/or acquire legitimate historical-provider data before making strong long-period causal claims.')
+backend\app\reporting.py:425:def _probe_spatial_evidence(a):
+backend\app\reporting.py:426:    """Aggregate point-specific corridor-probe observations for the report period.
+backend\app\reporting.py:429:    is used only when the selected road has actual probe observations.
+backend\app\reporting.py:435:        probes=list(db.scalars(select(CorridorProbe).where(CorridorProbe.location_id==loc_id).order_by(CorridorProbe.chainage_m)).all())
+backend\app\reporting.py:436:        obs=list(db.scalars(select(CorridorProbeObservation).where(CorridorProbeObservation.location_id==loc_id)).all())
+backend\app\reporting.py:437:    by_probe={}
+backend\app\reporting.py:444:        by_probe.setdefault(o.probe_id,[]).append(o)
+backend\app\reporting.py:446:    for p in probes:
+backend\app\reporting.py:447:        vals=by_probe.get(p.id,[])
+backend\app\reporting.py:453:            'probe_id':p.id,'sequence_no':p.sequence_no,'chainage_m':float(p.chainage_m or 0),
+backend\app\reporting.py:459:        return {'rows':[],'hotspots':[],'threshold':None,'note':'No point-specific corridor-probe observations are available for this report period.'}
+backend\app\reporting.py:466:        'note':f"Descriptive probe hotspots use the upper-quartile mean CI with a floor of 0.20 (threshold {threshold:.3f}); they are not Gi* significance tests."
+backend\app\reporting.py:497:    If corridor-probe observations exist, each probe is mapped using its own
+backend\app\reporting.py:498:    measured mean congestion index and upper-quartile moderate-or-worse probes
+backend\app\reporting.py:506:    pe=_probe_spatial_evidence(a)
+backend\app\reporting.py:507:    probe_pts=[(r['lon'],r['lat']) for r in pe['rows']]
+backend\app\reporting.py:508:    pts=(seg or center)+probe_pts; bbox=_bbox_from_points(pts or [(8.6753,9.082)])
+backend\app\reporting.py:511:    img,d,geo=_cartographic_base(f"SINGLE-ROAD CONGESTION HOTSPOTS — {loc['name']}",f"{loc.get('city') or ''}, {loc.get('state') or ''}, Nigeria · point-specific probe evidence where available",bbox);left,top,w,h=geo
+backend\app\reporting.py:515:    # Draw measured probe-to-probe sections using local mean CI.
+backend\app\reporting.py:532:    lines=[('Road-wide mean CI',sm.get('mean_congestion_index')),('Road-wide class',severity),('Mean delay (s)',sm.get('mean_delay_seconds')),('Probe points with data',len(pe['rows'])),('Descriptive hotspots',len(pe['hotspots'])),('Hotspot CI threshold',f"{pe['threshold']:.3f}" if pe['threshold'] is not None else '—'),('TTI',sm.get('travel_time_index')),('Evidence grade',sm.get('evidence_grade'))]
+backend\app\reporting.py:535:    # Legend for local probe severity.
+backend\app\reporting.py:540:        d.ellipse((lx,ly-2,lx+22,ly+20),outline=(205,45,55),width=4);d.text((lx+30,ly-2),'Hotspot probe',font=_report_font(13,True),fill=(30,40,50))
+backend\app\research_engine.py:22:    GNSSTrackPoint, CorridorProbe, CorridorProbeObservation
+backend\app\research_engine.py:26:from .corridor_intelligence import corridor_analysis
+backend\app\research_engine.py:74:def ensure_corridor_probes(location_id:int, spacing_m:int=100):
+backend\app\research_engine.py:81:        old=list(db.scalars(select(CorridorProbe).where(CorridorProbe.location_id==location_id).order_by(CorridorProbe.sequence_no)).all())
+backend\app\research_engine.py:85:            referenced=int(db.scalar(select(func.count(CorridorProbeObservation.id)).where(CorridorProbeObservation.probe_id.in_(old_ids))) or 0)
+backend\app\research_engine.py:86:        # Historical probe observations are scientific evidence. Never delete their parent probes.
+backend\app\research_engine.py:87:        # A repeated 100 m prepare action therefore reuses the established probe network rather
+backend\app\research_engine.py:98:                "reason":f"Existing corridor probes were reused because {referenced} historical probe observation(s) reference them; no research evidence was deleted."
+backend\app\research_engine.py:103:            db.add(CorridorProbe(location_id=location_id,sequence_no=p["sequence"],chainage_m=p["chainage_m"],
+backend\app\research_engine.py:127:        "sessions":len(sessions),"points":len(valid_pts),"stored_points_total":len(pts),"excluded_out_of_corridor_points":len(invalid_pts),
+backend\app\research_engine.py:142:        probe_count=db.scalar(select(func.count(CorridorProbe.id)).where(CorridorProbe.location_id==location_id)) or 0
+backend\app\research_engine.py:149:            "evidence":f"{survey_count} valid field GNSS points; {survey_info.get('excluded_out_of_corridor_points',0)} out-of-corridor point(s) excluded",
+backend\app\research_engine.py:153:            "objective":"Digitize the road network / selected corridor",
+backend\app\research_engine.py:156:            "next_action":"Acquire live traffic once to retain provider segment geometry." if len(seg)<2 else "Provider centerline can be exported to GIS formats."
+backend\app\research_engine.py:166:            "status":"complete" if probe_count>=5 and coverage>=20 else "screening_only" if a["data_quality"]["observations"] else "not_started",
+backend\app\research_engine.py:167:            "evidence":f"{probe_count} corridor probes; {coverage}% temporal coverage",
+backend\app\research_engine.py:168:            "next_action":"Create corridor probes and collect repeated point-specific observations before claiming intra-road statistical hotspots." if probe_count<5 or coverage<20 else "Evidence supports stronger hotspot analysis."
+backend\app\research_engine.py:186:        ("Corridor chainage/probe table","table + GIS","When probes are generated"),
+backend\app\research_engine.py:241:           "study_spatial_valid":bool(q.get("valid")),"distance_to_study_corridor_m":q.get("distance_m"),"quality_note":q.get("reason")})
+backend\app\research_engine.py:247:    fields=list(rows[0].keys()) if rows else ["session_id","captured_at","latitude","longitude","altitude_m","accuracy_m","speed_kmh","heading_deg","traffic_state","queue_length_m","notes","source","study_spatial_valid","distance_to_study_corridor_m","quality_note"]
+backend\app\research_engine.py:260:    fields=list(rows[0].keys()) if rows else ["session_id","captured_at","latitude","longitude","altitude_m","accuracy_m","speed_kmh","heading_deg","traffic_state","queue_length_m","notes","source","study_spatial_valid","distance_to_study_corridor_m","quality_note"]
+backend\app\research_engine.py:298:def _corridor_congestion_map(location_id:int,days:int):
+backend\app\research_engine.py:299:    ca=corridor_analysis(location_id,days); rows=[r for r in ca.get("rows",[]) if r.get("latitude") is not None and r.get("longitude") is not None]
+backend\app\research_engine.py:301:    d.text((80,35),"CORRIDOR CONGESTION SEVERITY MAP",font=_report_font(42,True),fill=(12,20,32));d.text((80,95),f"{days}-day probe evidence · each route section is coloured by mean congestion",font=_report_font(22),fill=(70,80,95))
+backend\app\research_engine.py:303:        d.text((120,220),"Insufficient repeated corridor-probe evidence for a route-severity map.",font=_report_font(28,True),fill=(130,60,60))
+backend\app\research_engine.py:324:            worst=max(valid,key=lambda r:r['mean_congestion_index']); x,y=xy(worst);d.ellipse((x-22,y-22,x+22,y+22),outline=(120,0,35),width=6);d.text((110,960),f"Most congested observed probe: P{worst['sequence_no']} at chainage {worst['chainage_m']:.0f} m · mean CI {worst['mean_congestion_index']} · {worst['severity']}",font=_report_font(20,True),fill=(90,20,35))
+backend\app\research_engine.py:370:def _probe_hourly_stats(location_id:int):
+backend\app\research_engine.py:372:        probes={p.id:p for p in db.scalars(select(CorridorProbe).where(CorridorProbe.location_id==location_id)).all()}
+backend\app\research_engine.py:373:        obs=list(db.scalars(select(CorridorProbeObservation).where(CorridorProbeObservation.location_id==location_id).order_by(CorridorProbeObservation.observed_at)).all())
+backend\app\research_engine.py:378:        local=dt.astimezone(ANALYSIS_TZ); groups[(local.date().isoformat(),local.hour)][o.probe_id].append(float(o.congestion_index))
+backend\app\research_engine.py:379:    return probes,groups
+backend\app\research_engine.py:381:def _probe_map_image(probes, stats, title, subtitle):
+backend\app\research_engine.py:383:    for pid,p in probes.items():
+backend\app\research_engine.py:391:        d.text((120,220),"No usable corridor geometry for this map.",font=_report_font(28,True),fill=(130,60,60))
+backend\app\research_engine.py:400:            w=max(valid,key=lambda r:r['ci']);x,y=xy(w);d.ellipse((x-22,y-22,x+22,y+22),outline=(120,0,35),width=6);d.text((110,930),f"Strongest observed location: probe {w['p'].sequence_no} · chainage {w['p'].chainage_m:.0f} m · CI {w['ci']:.3f}",font=_report_font(20,True),fill=(90,20,35))
+backend\app\research_engine.py:401:        else:d.text((110,930),"No probe-specific congestion evidence exists for this interval; route is shown as no evidence.",font=_report_font(19),fill=(80,90,100))
+backend\app\research_engine.py:406:def _daily_probe_products(location_id:int, date_str:str):
+backend\app\research_engine.py:407:    probes,groups=_probe_hourly_stats(location_id); hourly={h:groups.get((date_str,h),{}) for h in range(24)}; daily=defaultdict(list)
+backend\app\research_engine.py:410:    products={"daily_map":_probe_map_image(probes,daily,f"DAILY CORRIDOR CONGESTION MAP — {date_str}","Probe-specific congestion by route location; daily evidence only"),"hourly_maps":{}}
+backend\app\research_engine.py:412:        if any(stats.values()): products["hourly_maps"][h]=_probe_map_image(probes,stats,f"HOURLY CORRIDOR CONGESTION MAP — {date_str}",f"{h:02d}:00–{(h+1)%24:02d}:00 WAT · probe-specific evidence only")
+backend\app\research_engine.py:415:def _corridor_observation_export(location_id:int):
+backend\app\research_engine.py:417:        probes={p.id:p for p in db.scalars(select(CorridorProbe).where(CorridorProbe.location_id==location_id)).all()}
+backend\app\research_engine.py:418:        obs=list(db.scalars(select(CorridorProbeObservation).where(CorridorProbeObservation.location_id==location_id).order_by(CorridorProbeObservation.observed_at)).all())
+backend\app\research_engine.py:421:        p=probes.get(o.probe_id)
+backend\app\research_engine.py:422:        rows.append({"probe_id":o.probe_id,"sequence_no":p.sequence_no if p else None,"chainage_m":p.chainage_m if p else None,
+backend\app\research_engine.py:427:    fields=list(rows[0].keys()) if rows else ["probe_id","sequence_no","chainage_m","observed_at","current_speed_kmh","free_flow_speed_kmh","congestion_index","delay_seconds","confidence","provider","provider_status","error_category"]
+backend\app\research_engine.py:463:        z.writestr(f"{safe}_gnss_rejected_or_off_corridor_QUARANTINE.csv",gnss_quarantine)
+backend\app\research_engine.py:469:        z.writestr(f"{safe}_corridor_probe_observations.csv",_corridor_observation_export(location_id))
+backend\app\research_engine.py:478:            pp=_daily_probe_products(location_id,r['date']); z.writestr(f"{daydir}/{safe}_{r['date']}_corridor_congestion_map.png",pp["daily_map"])
+backend\app\research_engine.py:479:            for h,img in pp["hourly_maps"].items():z.writestr(f"{daydir}/hourly_corridor_maps/{h:02d}00_{(h+1)%24:02d}00_WAT.png",img)
+backend\app\research_engine.py:492:        z.writestr(f"02_COMPOSITE_ANALYSIS/research_figures/{safe}_corridor_congestion_severity_map.png",_corridor_congestion_map(location_id,days))
+backend\app\research_engine.py:493:        z.writestr(f"research_figures/{safe}_corridor_congestion_severity_map.png",_corridor_congestion_map(location_id,days))
+backend\app\research_engine.py:512:            "scientific_integrity":"Missing evidence is not fabricated. Daily hourly analysis/maps are produced before composite results. Browser GNSS outside Nigeria/off-corridor is quarantined and excluded from valid study evidence.",
+backend\app\research_engine.py:531:                probes=list(db.scalars(select(CorridorProbe).where(CorridorProbe.location_id==location_id).order_by(CorridorProbe.sequence_no)).all())
+backend\app\research_engine.py:532:            rows=[{"sequence_no":p.sequence_no,"chainage_m":p.chainage_m,"latitude":p.latitude,"longitude":p.longitude,"source_geometry":p.source_geometry} for p in probes]
+backend\app\research_engine.py:533:            z.writestr("corridor_probes.csv",_csv_bytes(rows,["sequence_no","chainage_m","latitude","longitude","source_geometry"]))
+backend\app\research_engine.py:534:        return "ITICAS_road_corridor_output.zip",bio.getvalue(),"application/zip"
+backend\app\research_engine.py:536:        data=_corridor_observation_export(location_id)
+backend\app\research_engine.py:537:        return "ITICAS_corridor_scan_observations.csv",data,"text/csv"
+backend\app\research_engine.py:543:            z.writestr("gnss_rejected_or_off_corridor_QUARANTINE.csv",quarantine)
+backend\app\research_engine.py:546:            z.writestr("README_GNSS_QUALITY.txt",f"Primary GNSS outputs contain only spatially valid study-corridor points. {qcount} stored point(s) were quarantined as outside Nigeria/off-corridor and retained only for provenance. Browser GNSS reports the physical device position; ITICAS never substitutes the selected road coordinate.\n".encode("utf-8"))
+backend\app\research_quality.py:4:from .database import SessionLocal, MonitoringLocation, CorridorProbe
+backend\app\research_quality.py:24:        probes=list(db.scalars(select(CorridorProbe).where(CorridorProbe.location_id==location_id)).all())
+backend\app\research_quality.py:27:    # The monitoring-location coordinate is the authoritative anchor. Probe coordinates
+backend\app\research_quality.py:28:    # are accepted as corroborating corridor geometry only when they are themselves close
+backend\app\research_quality.py:29:    # to that anchor. This prevents a previously corrupted/off-country probe set from
+backend\app\research_quality.py:38:        for p in probes:
+backend\app\research_quality.py:43:        candidates=[(float(p.latitude),float(p.longitude)) for p in probes if p.latitude is not None and p.longitude is not None and _in_nigeria(p.latitude,p.longitude)]
+backend\app\research_quality.py:54:                      "Use a phone/GNSS receiver physically on the Nigerian study corridor or import field coordinates."),
+backend\app\research_quality.py:66:        "reason":("Coordinate is spatially consistent with the selected study corridor." if valid else
+backend\app\research_quality.py:67:                  f"Device coordinate is {distance/1000:.1f} km from the selected study corridor and is excluded from study evidence."),
+backend\app\search_service.py:12:from .tomtom_traffic import TomTomTrafficClient, ProviderNotConfigured, ProviderRequestError, classify_http_error
+backend\app\search_service.py:512:                                 provider_factory=TomTomTrafficClient) -> dict:
+backend\app\security.py:13:    "traffic:acquire",
+backend\app\supabase_archive.py:11:from .database import SessionLocal, MonitoringLocation, CorridorProbe, TrafficObservation, CorridorProbeObservation
+backend\app\supabase_archive.py:59:        probes=list(db.scalars(select(CorridorProbe).where(CorridorProbe.location_id==location_id).order_by(CorridorProbe.sequence_no)).all())
+backend\app\supabase_archive.py:64:            "probe_sequence_no":None,
+backend\app\supabase_archive.py:76:        for p in probes:
+backend\app\supabase_archive.py:78:                "target_key":_target_key("probe",loc.id,p.sequence_no,float(p.latitude),float(p.longitude)),
+backend\app\supabase_archive.py:79:                "target_type":"probe",
+backend\app\supabase_archive.py:81:                "probe_sequence_no":p.sequence_no,
+backend\app\supabase_archive.py:82:                "name":f"{loc.name} probe {p.sequence_no}",
+backend\app\supabase_archive.py:90:                "sample_every_minutes":int(settings.supabase_default_probe_interval_minutes),
+backend\app\supabase_archive.py:149:        "select":"target_key,target_type,probe_sequence_no,name",
+backend\app\supabase_archive.py:212:        "select":"target_key,target_type,probe_sequence_no,name",
+backend\app\supabase_archive.py:218:    main_added=probe_added=skipped=0
+backend\app\supabase_archive.py:220:        probe_map={p.sequence_no:p for p in db.scalars(select(CorridorProbe).where(CorridorProbe.location_id==location_id)).all()}
+backend\app\supabase_archive.py:242:            elif meta.get("target_type")=="probe":
+backend\app\supabase_archive.py:243:                seq=meta.get("probe_sequence_no"); probe=probe_map.get(seq)
+backend\app\supabase_archive.py:244:                if not probe:skipped+=1;continue
+backend\app\supabase_archive.py:245:                existing=db.scalar(select(CorridorProbeObservation.id).where(
+backend\app\supabase_archive.py:246:                    CorridorProbeObservation.probe_id==probe.id,
+backend\app\supabase_archive.py:247:                    CorridorProbeObservation.observed_at==dt,
+backend\app\supabase_archive.py:248:                    CorridorProbeObservation.provider=="TomTom Traffic API (Autonomous Cloud Archive)"
+backend\app\supabase_archive.py:251:                db.add(CorridorProbeObservation(
+backend\app\supabase_archive.py:252:                    probe_id=probe.id,location_id=location_id,observed_at=dt,
+backend\app\supabase_archive.py:259:                ));probe_added+=1
+backend\app\supabase_archive.py:262:            "probe_observations_imported":probe_added,"skipped_existing_or_unmatched":skipped,"period_days":days}
+backend\app\tomtom_traffic.py:10:FLOW_URL = "https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json"
+backend\app\tomtom_traffic.py:97:class TomTomTrafficClient:
+backend\app\tomtom_traffic.py:193:        data = payload.get("flowSegmentData") or {}
+backend\app\traffic_service.py:4:from .tomtom_traffic import TomTomTrafficClient, ProviderRequestError, ProviderNotConfigured
+backend\app\traffic_service.py:12:async def acquire_location_traffic_data(location_id: int, provider_factory=TomTomTrafficClient):

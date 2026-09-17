@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#08111f">
+  <title>{{ short_name }} | Spatial Decision Intelligence</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="stylesheet" href="/static/css/map.css">
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@5.14.0/dist/maplibre-gl.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-mark">IT</div><div><h1>{{ short_name }}</h1><p>Traffic Intelligence</p></div></div>
+    <nav class="nav">
+      <a class="nav-item" href="/"><span>◈</span> Overview</a><a class="nav-item" href="/monitoring"><span>◉</span> Monitoring</a>
+      <a class="nav-item" href="/map"><span>⌖</span> Live Map</a><a class="nav-item" href="/locations"><span>≋</span> Locations</a><a class="nav-item" href="/weather">☁ Weather</a>
+      <a class="nav-item" href="/analytics"><span>⌁</span> Analytics</a><a class="nav-item" href="/predictions"><span>↗</span> Predictions</a><a class="nav-item active" href="/spatial"><span>◎</span> Spatial Intelligence</a>
+      <a class="nav-item" href="/historical"><span>◫</span> Historical Data</a><a class="nav-item" href="/research">◫ Research Workbench</a><a class="nav-item" href="/reports"><span>▤</span> Reports</a>
+      <a class="nav-item" href="/diagnostics"><span>◇</span> Diagnostics</a><a class="nav-item" href="/admin/security"><span>◇</span> Security</a>
+    </nav>
+    <div class="sidebar-footer"><div class="status-dot"></div><div><strong>System Online</strong><small>Stage {{ stage }} · v{{ version }}</small></div></div>
+  </aside>
+  <main class="main">
+    <header class="topbar"><div><p class="eyebrow">SPATIAL CONGESTION + DECISION INTELLIGENCE</p><h2>National Spatial Traffic Intelligence</h2>
+      <p class="subtext">Single-road congestion intelligence is the default workflow. Search any Nigerian road to inspect current condition and link it to stored/historical evidence. Multi-route/network comparison is a separate optional mode.</p></div></header>
+
+    <section class="panel" style="padding:20px;margin-bottom:14px">
+      <div class="panel-head"><div><span class="kicker">NATIONWIDE ROAD EXPLORER</span><h3>Single-road / corridor intelligence — default mode</h3></div></div>
+      <p class="subtext">Search one road/corridor anywhere in Nigeria. ITICAS returns its current traffic condition and, where a nearby evidence target exists, its stored/historical coverage. Single-road reports/maps must not mix unrelated roads. Use Network Comparison below only when you intentionally want several routes compared.</p>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:10px"><input id="roadSearch" placeholder="e.g. Third Mainland Bridge Lagos, Airport Road Abuja, Ring Road Benin City" style="padding:12px;border-radius:10px;border:1px solid #26364d;background:#091423;color:#eef6ff"><button id="roadSearchBtn" class="primary-btn">Search road</button></div>
+      <div id="roadSearchMsg" class="inline-message" style="margin-top:8px"></div><div id="roadResults" class="search-results"></div>
+      <div id="roadEval" style="display:none;margin-top:14px" class="note"></div>
+    </section>
+    <section class="panel" style="padding:20px"><div class="panel-head"><div><span class="kicker">OPTIONAL MULTI-ROUTE / NETWORK COMPARISON</span><h3>Compare evidence-bearing monitoring routes</h3><p class="subtext">This mode ranks only routes for which ITICAS has stored evidence. It is not a census of every Nigerian road.</p></div></div>
+      <div style="display:grid;grid-template-columns:1fr 1fr auto;gap:12px;align-items:end">
+        <label>Analysis period<select id="spatialDays"><option value="1">24 hours</option><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option></select></label>
+        <label>Spatial bandwidth<select id="spatialBandwidth"><option value="2">2 km</option><option value="5" selected>5 km</option><option value="10">10 km</option><option value="20">20 km</option></select></label>
+        <button class="primary-btn" id="spatialRun">Run spatial analysis</button>
+      </div><div id="spatialMessage" class="inline-message" style="margin-top:10px"></div>
+    </section>
+    <section class="metric-grid" style="margin-top:14px">
+      <article class="metric-card"><span>Locations analyzed</span><strong id="spLocs">—</strong></article>
+      <article class="metric-card"><span>Hotspots (90%+)</span><strong id="spHot">—</strong></article>
+      <article class="metric-card"><span>Highest priority</span><strong id="spPriority">—</strong></article>
+      <article class="metric-card"><span>Validation</span><strong id="spValidation">—</strong></article>
+    </section>
+    <section class="panel" style="padding:20px;margin-top:14px">
+      <div class="panel-head"><div><span class="kicker">CONFIGURED MONITORING NETWORK</span><h3>Multi-route intervention ranking</h3><p class="subtext">Basis: configured active ITICAS evidence targets only. Each row is one route/location; duplicate road/location labels are suppressed. Search any Nigerian road above for single-road evaluation.</p></div></div>
+      <div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th>Rank</th><th>Road / location</th><th>State</th><th>Mean CI</th><th>Delay (s)</th><th>Evidence</th><th>Priority</th><th>Gi* class</th><th>Kernel exposure</th></tr></thead><tbody id="spatialBody"></tbody></table></div>
+    </section>
+    <section class="panel" style="padding:20px;margin-top:14px">
+      <span class="kicker">METHODOLOGY & SCIENTIFIC CAUTION</span><h3>How these spatial results should be interpreted</h3>
+      <p id="spatialMethod">Run the analysis to see methodology notes.</p>
+      <p class="subtext">Raw GPS point density alone is not treated as congestion. Inferential hot/cold-spot labels are also withheld when a route has less than 20% temporal coverage or fewer than 24 evidence-bearing hours. ITICAS weights spatial intensity by a traffic-performance variable such as congestion index, delay or reliability. This avoids confusing sampling density with traffic severity.</p>
+    </section>
+    <footer><span>{{ app_name }}</span><span class="developer-credit">{{ developer_credit }}</span><span>Stage {{ stage }} · Version {{ version }}</span></footer>
+  </main>
+</div>
+<script src="/static/js/spatial.js"></script>
+</body></html>

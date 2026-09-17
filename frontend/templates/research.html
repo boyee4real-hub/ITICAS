@@ -1,0 +1,60 @@
+<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="theme-color" content="#08111f"><title>{{ short_name }} | Guided Research Study</title><link rel="stylesheet" href="/static/css/app.css"><style>
+.research-wrap{max-width:1180px;margin:auto}.wizard{display:grid;grid-template-columns:repeat(6,1fr);gap:8px;margin:12px 0 18px}.step{padding:12px;border:1px solid #2a3950;border-radius:12px;background:#101c2d;min-height:92px}.step strong{display:block;font-size:24px}.step.current{outline:2px solid #56df9b}.step.done{background:#10261f}.section{padding:18px;border:1px solid #28384f;border-radius:14px;background:#111c2e;margin-bottom:14px}.section h3{margin-top:0}.actions{display:flex;gap:9px;flex-wrap:wrap}.primary{background:linear-gradient(90deg,#5ee39a,#4ccfe8);border:0;padding:11px 16px;border-radius:9px;font-weight:800;cursor:pointer}.secondary{background:#142237;color:#eef6ff;border:1px solid #334863;padding:10px 14px;border-radius:9px;cursor:pointer}.final{background:linear-gradient(90deg,#ffd166,#5ee39a);border:0;padding:13px 20px;border-radius:10px;font-size:16px;font-weight:900;cursor:pointer}.status{padding:11px;border-radius:9px;background:#091525;border:1px dashed #34516e;margin-top:10px}.two{display:grid;grid-template-columns:1.2fr .8fr;gap:12px}.summary{display:grid;grid-template-columns:repeat(4,1fr);gap:10px}.tile{padding:13px;border:1px solid #2b3c53;border-radius:10px;background:#0d1828}.objective{display:grid;grid-template-columns:2fr 120px 1.6fr 1.6fr;gap:8px;padding:10px;border-bottom:1px solid #26364d}.output-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:8px}.output{padding:9px;border:1px solid #2b3b51;border-radius:9px}.badge{padding:3px 8px;border-radius:999px;background:#172a39}.ok{color:#5ee39a}.warn{color:#ffd166}.bad{color:#ff7189}input,select{width:100%;padding:10px;border-radius:8px;border:1px solid #32445b;background:#091423;color:#fff}@media(max-width:900px){.wizard,.summary,.two,.output-grid,.objective{grid-template-columns:1fr}}</style></head><body>
+<div class="app-shell"><aside class="sidebar"><div class="brand"><div class="brand-mark">IT</div><div><h1>{{ short_name }}</h1><p>Traffic Intelligence</p></div></div><nav class="nav"><a class="nav-item" href="/">◈ Overview</a><a class="nav-item" href="/monitoring">◉ Monitoring</a><a class="nav-item" href="/map">⌖ Live Map</a><a class="nav-item" href="/locations">≋ Locations</a><a class="nav-item" href="/weather">☁ Weather</a><a class="nav-item" href="/analytics">⌁ Analytics</a><a class="nav-item" href="/spatial">◎ Spatial Intelligence</a><a class="nav-item" href="/predictions"><span>↗</span> Predictions</a><a class="nav-item" href="/archive">◫ Autonomous Archive</a><a class="nav-item" href="/historical">▥ Historical Data</a><a class="nav-item active" href="/research">◫ Research Workbench</a><a class="nav-item" href="/reports">▤ Reports</a><a class="nav-item" href="/diagnostics">◇ Diagnostics</a><a class="nav-item" href="/admin/security">Security</a></nav><div class="sidebar-footer"><div class="status-dot"></div><div><strong>System Online</strong><small>Stage {{ stage }} · v{{ version }}</small></div></div></aside>
+<main class="main"><div class="research-wrap"><header class="topbar"><div><p class="eyebrow">GUIDED GNSS + GIS TRAFFIC RESEARCH</p><h2>Research Study Wizard</h2><p class="subtext">Follow the six numbered steps from left to right. You can stop after any step and continue later. The final button downloads the complete study package.</p></div></header>
+<div class="traffic-legend">
+  <strong style="margin-right:6px">Traffic severity:</strong>
+  <span class="item"><span class="swatch traffic-free"></span>Free flow</span>
+  <span class="item"><span class="swatch traffic-light"></span>Light</span>
+  <span class="item"><span class="swatch traffic-moderate"></span>Moderate</span>
+  <span class="item"><span class="swatch traffic-heavy"></span>Heavy</span>
+  <span class="item"><span class="swatch traffic-severe"></span>Severe</span>
+  <span class="item"><span class="swatch traffic-blocked"></span>Blocked / closure</span>
+  <span class="item"><span class="swatch traffic-unknown"></span>No evidence</span>
+</div>
+
+
+<div id="wizard" class="wizard"></div>
+
+<section class="section" id="step1"><h3>Step 1 — Choose the study road and period</h3><div class="two"><label>Study road / target<select id="researchLoc"></select></label><label>Research period<select id="researchDays"><option value="1">24 hours</option><option value="7">7 days</option><option value="30" selected>30 days</option><option value="90">90 days</option><option value="365">1 year</option></select></label></div><div class="actions" style="margin-top:10px"><button id="evaluate" class="primary">1. Start / evaluate study</button></div><div id="mainMsg" class="status">Choose a road and press “Start / evaluate study”.</div></section>
+
+<section class="section" id="step2"><h3>Step 2 — Prepare the road corridor</h3><p>The application uses the stored provider road geometry, then places analysis probes along the selected corridor.</p><div class="actions"><button id="makeProbes" class="primary">2. Generate 100 m corridor probes</button><button id="viewMap" class="secondary">Open road on Live Map</button></div><div id="probeMsg" class="status">No action yet.</div></section>
+
+<section class="section" id="step3"><h3>Step 3 — Collect traffic and field evidence</h3>
+<p><strong>Remote traffic scan:</strong> retrieves current provider traffic separately at each corridor probe. <strong>Field GNSS:</strong> use only when the research objective requires GPS/GNSS field observations.</p>
+<div class="evidence-tool">
+  <div class="tool-head"><div><strong>3A. Remote corridor traffic scan</strong><small>Independent of the optional GNSS survey.</small></div><button id="scanCorridor" class="primary">Scan all corridor probes now</button></div>
+  <div id="scanMsg" class="status" aria-live="polite">Traffic scan has not been run.</div>
+</div>
+<hr style="border-color:#3f4149;margin:16px 0">
+<div class="evidence-tool">
+  <div><strong>3B. Optional field GNSS survey</strong><small class="tool-note">This does not control or complete the remote corridor scan.</small></div>
+  <div class="two" style="margin-top:10px"><input id="surveyName" placeholder="GNSS survey name, e.g. Mokola AM Peak Run 1"><input id="surveyOperator" placeholder="Surveyor / student group"></div>
+  <div class="actions" style="margin-top:8px"><button id="startSurvey" class="secondary">Start optional field GNSS survey</button><button id="stopSurvey" class="secondary" disabled>Stop GNSS survey</button></div>
+  <div id="gnssMsg" class="status" aria-live="polite">GNSS survey has not been started.</div>
+</div>
+</section>
+
+<section class="section" id="step4"><h3>Step 4 — Run research analysis</h3><p>This updates the objective matrix, temporal evidence, corridor profile and hotspot-readiness gate.</p><div class="actions"><button id="runAnalysis" class="primary">4. Run full research analysis</button><a class="secondary" href="/analytics">Open detailed Analytics</a><a class="secondary" href="/spatial">Open Spatial Intelligence</a></div><div id="analysisMsg" class="status">Analysis not run yet.</div></section>
+
+
+<section class="section" id="toolOutputs">
+  <h3>Tool Output Centre — each tool has its own result</h3>
+  <p class="subtext">Results are separated so the user can understand exactly what each tool produced before combining everything in the final research package.</p>
+  <div class="output-grid">
+    <div class="output"><strong>Road / Corridor Preparation</strong><div id="toolRoadOutput">No output yet.</div><button class="secondary" id="downloadRoadOutput">Download road/probe data</button></div>
+    <div class="output"><strong>Corridor Traffic Scan</strong><div id="toolScanOutput">No output yet.</div><button class="secondary" id="downloadScanOutput">Download corridor observations</button></div>
+    <div class="output"><strong>GNSS Field Survey</strong><div id="toolGnssOutput">No output yet.</div><button class="secondary" id="downloadGnssOutput">Download GNSS data</button></div>
+    <div class="output"><strong>Temporal Analytics</strong><div id="toolTemporalOutput">No output yet.</div><a class="secondary" href="/analytics">Open temporal result</a></div>
+    <div class="output"><strong>Spatial / Hotspot Intelligence</strong><div id="toolSpatialOutput">No output yet.</div><a class="secondary" href="/spatial">Open spatial result</a></div>
+    <div class="output"><strong>Research Objective Assessment</strong><div id="toolObjectiveOutput">No output yet.</div><button class="secondary" id="downloadObjectiveOutput">Download objective matrix</button></div>
+  </div>
+</section>
+
+<div class="summary"><div class="tile"><small>Objectives complete</small><h2 id="objCount">—</h2></div><div class="tile"><small>Corridor probes</small><h2 id="probeCount">—</h2></div><div class="tile"><small>Probe observations</small><h2 id="probeObs">—</h2></div><div class="tile"><small>GNSS points</small><h2 id="gnssCount">—</h2></div></div>
+
+<section class="section" id="step5"><h3>Step 5 — Review what the study can validly report</h3><div id="objectiveRows"></div><details style="margin-top:12px"><summary><strong>Show all available output types</strong></summary><div id="outputGrid" class="output-grid" style="margin-top:10px"></div></details></section>
+
+<section class="section" id="step6"><h3>Step 6 — Export the completed study</h3><p>This is the final step. The package includes the research objective matrix, traffic tables, GNSS/GIS files, hourly/daily analyses, Decision Atlas, DOCX/PDF research reports, XLSX/CSV/JSON reproducibility files and all supported maps/figures.</p><div class="actions"><button id="downloadResearch" class="final">6. Download COMPLETE research study package</button><a class="secondary" href="/reports">Open individual report downloads</a></div><div class="status"><strong>Important:</strong> ITICAS exports every scientifically supported result. Missing traffic volume, density, queue, direction or inferential hotspot results are labelled unavailable until the required evidence is supplied; they are not invented.</div></section>
+
+<footer><span>{{ app_name }}</span><span class="developer-credit">{{ developer_credit }}</span><span>Stage {{ stage }} · Version {{ version }}</span></footer></div></main></div><script src="/static/js/research.js"></script></body></html>

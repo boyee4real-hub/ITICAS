@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"><meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#08111f">
+  <meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+  <title>{{ short_name }} | Historical Traffic</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-mark">IT</div><div><h1>{{ short_name }}</h1><p>Traffic Intelligence</p></div></div>
+    <nav class="nav">
+      <a class="nav-item" href="/"><span>◈</span> Overview</a>
+      <a class="nav-item" href="/monitoring"><span>◉</span> Monitoring</a>
+      <a class="nav-item" href="/map"><span>⌖</span> Live Map</a>
+      <a class="nav-item" href="/locations"><span>≋</span> Locations</a><a class="nav-item" href="/weather">☁ Weather</a>
+      <a class="nav-item" href="/analytics"><span>⌁</span> Analytics</a>
+      <a class="nav-item" href="/spatial"><span>◎</span> Spatial Intelligence</a><a class="nav-item" href="/predictions"><span>↗</span> Predictions</a>
+      <a class="nav-item active" href="/historical"><span>◫</span> Historical Data</a>
+      <a class="nav-item" href="/archive"><span>◫</span> Cloud Archive</a>
+      <a class="nav-item" href="/research">◫ Research Workbench</a><a class="nav-item" href="/reports"><span>▤</span> Reports</a>
+      <a class="nav-item" href="/diagnostics"><span>◇</span> Diagnostics</a>
+      <a class="nav-item" href="/admin/security"><span>◇</span> Security</a>
+    </nav>
+    <div class="sidebar-footer"><div class="status-dot"></div><div><strong>System Online</strong><small>Stage {{ stage }} · v{{ version }}</small></div></div>
+  </aside>
+  <main class="main">
+    <header class="topbar">
+      <div><p class="eyebrow">ITICAS STORED ARCHIVE + OPTIONAL PROVIDER BACKFILL</p><h2>Historical Traffic Centre</h2>
+      <p class="subtext">Your autonomous Supabase archive is the primary historical source for monitored roads. Select a monitored location to load the traffic data ITICAS has already stored. Provider backfill remains optional and separate.</p></div>
+      <div class="top-actions"><a class="ghost-btn" href="/archive">Cloud Archive</a><a class="ghost-btn" href="/analytics">Analytics</a></div>
+    </header>
+
+    <section class="panel" style="padding:22px">
+      <div class="panel-head"><div><span class="kicker">STORED ITICAS HISTORY</span><h3>Load monitored-road traffic history</h3><p class="subtext">Active monitoring locations are listed first. Choosing Mokola, Iwo Road, Abuja or any other monitored road automatically checks the cloud archive, imports available observations into local analytics, and displays the stored records below.</p></div></div>
+      <div style="display:grid;grid-template-columns:2fr 1fr auto;gap:12px;align-items:end">
+        <label>Monitoring location<select id="histLocation"></select></label>
+        <label>Stored period<select id="histDays"><option value="1">Last 24 hours</option><option value="7" selected>Last 7 days</option><option value="30">Last 30 days</option><option value="90">Last 90 days</option><option value="365">Last 365 days</option></select></label>
+        <button class="primary-btn" id="loadStoredHistory">Load stored history</button>
+      </div>
+      <div id="histMessage" class="inline-message" style="margin-top:12px"></div>
+    </section>
+
+    <section class="metric-grid" style="margin-top:14px;grid-template-columns:repeat(4,minmax(0,1fr))">
+      <article class="metric-card"><span>Cloud archive observations</span><strong id="cloudObs">—</strong></article>
+      <article class="metric-card"><span>Stored local observations</span><strong id="liveObs">—</strong></article>
+      <article class="metric-card"><span>Unique covered hours</span><strong id="liveHours">—</strong></article>
+      <article class="metric-card"><span>Hourly coverage</span><strong id="combinedCoverage">—</strong></article>
+    </section>
+
+    <section class="panel" style="padding:22px;margin-top:14px">
+      <div class="panel-head"><div><span class="kicker">ARCHIVED TRAFFIC RECORDS</span><h3 id="storedTableTitle">Stored observations</h3><p class="subtext" id="storedRangeText">Select a monitoring location to load its archived traffic records.</p></div><button class="ghost-btn" id="refreshStored">Refresh stored data</button></div>
+      <div style="overflow:auto;max-height:520px"><table style="width:100%;border-collapse:collapse;min-width:900px"><thead><tr><th>Observed</th><th>Current speed</th><th>Free-flow</th><th>Congestion index</th><th>Delay</th><th>Confidence</th><th>Road closed</th><th>Provider / provenance</th></tr></thead><tbody id="storedBody"><tr><td colspan="8">No stored history loaded yet.</td></tr></tbody></table></div>
+    </section>
+
+
+    <section class="panel" style="padding:22px;margin-top:14px">
+      <div class="panel-head"><div><span class="kicker">DAY-BY-DAY TRAFFIC INTELLIGENCE</span><h3>Daily analysis before composite analysis</h3><p class="subtext">Each Nigeria-local calendar day in the selected period is analysed separately. Peak time, congestion, speed, delay and hourly evidence are shown per day; the summary cards above remain the composite view for the whole selected period.</p></div></div>
+      <div id="dailyAnalysis"><div class="inline-message">Load stored history to generate daily analysis.</div></div>
+    </section>
+
+    <section class="panel" style="padding:22px;margin-top:14px">
+      <div class="panel-head"><div><span class="kicker">OPTIONAL HISTORICAL PROVIDER BACKFILL</span><h3>Search an unmonitored Nigerian road or fill earlier gaps</h3><p class="subtext">This is separate from the ITICAS autonomous archive. Use it only when you need historical provider data from before ITICAS started monitoring a road and your Traffic Stats account is entitled.</p></div></div>
+      <div style="display:grid;grid-template-columns:1fr auto;gap:10px;margin-bottom:12px"><input id="histSearch" placeholder="e.g. Third Mainland Bridge Lagos, Wuse 2 Abuja, Mokola Ibadan" style="padding:12px;border-radius:10px;border:1px solid #26364d;background:#091423;color:#eef6ff"><button class="primary-btn" id="histSearchBtn">Search Nigeria</button></div>
+      <div id="histSearchMsg" class="inline-message"></div><div id="histSearchResults" class="search-results" style="margin-bottom:14px"></div>
+      <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap"><button class="ghost-btn" id="submitBackfill">Submit provider backfill for selected location</button><span id="histConfigured">Checking provider configuration…</span></div>
+    </section>
+
+    <section class="panel" style="padding:22px;margin-top:14px">
+      <div class="panel-head"><div><span class="kicker">BACKFILL JOBS</span><h3>Recent optional provider jobs</h3></div><button class="ghost-btn" id="refreshJobs">Refresh jobs</button></div>
+      <div style="overflow:auto"><table style="width:100%;border-collapse:collapse"><thead><tr><th>ID</th><th>Location</th><th>Period</th><th>Provider job</th><th>Status</th><th>Message</th><th></th></tr></thead><tbody id="jobsBody"></tbody></table></div>
+    </section>
+
+    <section class="panel" style="padding:22px;margin-top:14px">
+      <span class="kicker">SCIENTIFIC INTEGRITY</span><h3>How ITICAS labels historical traffic</h3>
+      <p>Autonomous cloud observations collected by ITICAS are imported with explicit provider provenance and retain their observation timestamps. Optional Traffic Stats backfill remains labelled <strong>historical_provider</strong>. ITICAS does not fabricate missing observations or silently relabel provider statistics as directly measured field data.</p>
+    </section>
+
+    <footer><span>{{ app_name }}</span><span class="developer-credit">{{ developer_credit }}</span><span>Stage {{ stage }} · Version {{ version }}</span></footer>
+  </main>
+</div>
+<form method="post" action="/logout" style="position:fixed;right:22px;bottom:18px;z-index:1000"><button class="ghost-btn" type="submit">Sign out</button></form>
+<script src="/static/js/historical.js?v=26.2"></script>
+</body></html>

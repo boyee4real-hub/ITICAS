@@ -1,0 +1,75 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width,initial-scale=1">
+  <title>Locations · ITICAS</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="stylesheet" href="/static/css/locations.css">
+</head>
+<body>
+  <div class="location-shell">
+    <header class="location-topbar">
+      <div>
+        <div class="eyebrow">ITICAS · NIGERIA · STAGE {{ stage }}</div>
+        <h1>Nigeria Monitoring Network</h1>
+        <p>Create traffic-monitoring locations anywhere in Nigeria. Existing records are only seed/demo entries and do not constrain nationwide operation.</p>
+      </div>
+      <a class="back-button" href="/">← Dashboard</a>
+    </header>
+
+    <section class="location-stats">
+      <article><strong id="totalCount">0</strong><span>Total locations</span></article>
+      <article><strong id="resolvedCount">0</strong><span>Coordinates resolved</span></article>
+      <article><strong id="activeCount">0</strong><span>Active monitoring</span></article>
+      <article><strong id="stateCount">0</strong><span>States represented</span></article>
+    </section>
+
+    <section class="location-grid">
+      <div class="location-panel">
+        <div class="panel-heading">
+          <div>
+            <span class="eyebrow">NATIONWIDE CATALOGUE</span>
+            <h2>Monitoring locations</h2>
+          </div>
+          <input id="searchBox" class="search-box" placeholder="Filter by road, city or state…">
+        </div>
+        <div id="locationTable" class="location-table"></div>
+      </div>
+
+      <aside class="location-panel add-panel">
+        <span class="eyebrow">ADD ANYWHERE IN NIGERIA</span>
+        <h2>New monitoring point</h2>
+        <p class="muted">Specify road/location, city and state. Coordinates may be entered manually or resolved later.</p>
+        <form id="locationForm">
+          <label>Location / junction<input id="name" required maxlength="150" placeholder="e.g. Berger Junction"></label>
+          <label>Road / corridor<input id="roadName" maxlength="200" placeholder="e.g. Lagos-Abeokuta Expressway"></label>
+          <div class="two-col">
+            <label>City<input id="city" maxlength="120" placeholder="e.g. Lagos"></label>
+            <label>State<input id="state" maxlength="120" placeholder="e.g. Lagos"></label>
+          </div>
+          <div class="two-col">
+            <label>Latitude<input id="latitude" type="number" step="any" min="-90" max="90"></label>
+            <label>Longitude<input id="longitude" type="number" step="any" min="-180" max="180"></label>
+          </div>
+          <label>Monitoring radius (m)<input id="radius" type="number" value="1000" min="100" max="10000"></label>
+          <button class="primary-button" type="submit">Add monitoring location</button>
+          <div id="formMessage" class="form-message"></div>
+        </form>
+
+        <div class="provenance-card">
+          <strong>Nationwide design</strong>
+          <p>Traffic providers and geocoding will use each record's own city, state and coordinates. No monitoring logic is restricted to any single city.</p>
+          <small>Data © OpenStreetMap contributors, ODbL 1.0.</small>
+        </div>
+      </aside>
+    </section>
+
+    <footer class="location-footer">
+      <span>{{ app_name }} · v{{ version }}</span>
+      <strong>{{ developer_credit }}</strong>
+    </footer>
+  </div>
+  <script src="/static/js/locations.js"></script>
+</body>
+</html>

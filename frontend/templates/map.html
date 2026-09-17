@@ -1,0 +1,120 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#08111f">
+  <title>{{ short_name }} | Nigeria Live Traffic Search</title>
+  <link rel="stylesheet" href="/static/css/app.css">
+  <link rel="stylesheet" href="/static/css/map.css?v=22.3">
+</head>
+<body>
+<div class="app-shell">
+  <aside class="sidebar">
+    <div class="brand"><div class="brand-mark">IT</div><div><h1>{{ short_name }}</h1><p>Traffic Intelligence</p></div></div>
+    <nav class="nav">
+      <a class="nav-item" href="/"><span>◈</span> Overview</a>
+      <a class="nav-item" href="/monitoring"><span>◉</span> Monitoring</a>
+      <a class="nav-item active" href="/map"><span>⌖</span> Live Map</a>
+      <a class="nav-item" href="/locations"><span>≋</span> Locations</a><a class="nav-item" href="/weather">☁ Weather</a>
+      <a class="nav-item" href="/analytics"><span>⌁</span> Analytics</a>
+      <a class="nav-item" href="/spatial"><span>◎</span> Spatial Intelligence</a>
+      <a class="nav-item" href="/predictions"><span>↗</span> Predictions</a>
+      <a class="nav-item" href="/historical"><span>◫</span> Historical Data</a>
+      <a class="nav-item" href="/research">◫ Research Workbench</a><a class="nav-item" href="/reports"><span>▤</span> Reports</a>
+      <a class="nav-item" href="/diagnostics"><span>◇</span> Diagnostics</a>
+      <a class="nav-item" href="/admin/security"><span>◇</span> Security</a>
+    </nav>
+    <div class="sidebar-footer"><div class="status-dot"></div><div><strong>System Online</strong><small>Stage {{ stage }} · v{{ version }}</small></div></div>
+  </aside>
+
+  <main class="main map-main">
+    <header class="topbar map-topbar">
+      <div>
+        <p class="eyebrow">FAST OSM MAP + NIGERIA-WIDE LIVE TRAFFIC</p>
+        <h2>National Traffic Explorer</h2>
+        <p class="subtext">A lightweight OpenStreetMap interface for smooth wheel zoom, drag, click-to-evaluate and Nigeria-wide road search. Traffic values still come from the configured live traffic provider; OSM is the basemap.</p>
+      </div>
+      <div class="top-actions"><a class="ghost-btn map-link" href="/">Dashboard</a></div>
+    </header>
+
+    <section class="search-shell panel">
+      <div class="search-row">
+        <input id="nationalSearch" autocomplete="off" placeholder="Search anywhere in Nigeria — e.g. Mokola Ibadan, Wuse 2 Abuja, Third Mainland Bridge, 6.5244, 3.3792">
+        <button id="searchBtn" class="primary-btn">Search Nigeria</button>
+      </div>
+      <p class="search-note">Use the mouse wheel or the +/− controls to zoom, drag to pan, and click any road or point to evaluate traffic.</p>
+      <div id="searchMessage" class="inline-message"></div>
+      <div id="searchResults" class="search-results"></div>
+    </section>
+
+    <section class="map-workspace">
+      <article class="panel map-panel">
+        <div class="panel-head">
+          <div><span class="kicker">LIVE NATIONAL MAP</span><h3>OpenStreetMap — smooth zoom, pan and click</h3></div>
+          <span id="providerBadge" class="chip">OpenStreetMap basemap · ITICAS live traffic overlay</span>
+        </div>
+        <div id="mapNetworkStatus" class="map-network-status" data-state="loading">
+          <span id="mapNetworkText">Loading OpenStreetMap…</span>
+          <button id="retryTilesBtn" type="button">Reload map</button>
+          <button id="resetNigeriaBtn" type="button">Nigeria view</button>
+        </div>
+        <div id="map" class="lite-map-shell" aria-label="Interactive OpenStreetMap of Nigeria">
+          <div class="map-controls" aria-label="Map zoom controls"><button id="mapZoomIn" type="button" title="Zoom in">+</button><button id="mapZoomOut" type="button" title="Zoom out">−</button></div>
+          <div id="mapZoomLabel" class="map-zoom-label">Zoom</div>
+          <div class="osm-attribution">© <a href="https://www.openstreetmap.org/copyright" target="_blank" rel="noopener">OpenStreetMap</a> contributors</div>
+        </div>
+        <div class="traffic-legend"><strong>Traffic severity:</strong><span class="item"><span class="swatch traffic-free"></span>Free</span><span class="item"><span class="swatch traffic-light"></span>Light</span><span class="item"><span class="swatch traffic-moderate"></span>Moderate</span><span class="item"><span class="swatch traffic-heavy"></span>Heavy</span><span class="item"><span class="swatch traffic-severe"></span>Severe</span><span class="item"><span class="swatch traffic-blocked"></span>Blocked</span></div>
+        <div class="map-legend">
+          <span><i class="legend-dot selected"></i> Click/evidence point</span>
+          <span><i class="legend-line" style="background:#22d3ee"></i> Selected road/segment</span>
+          <span><i class="legend-line"></i> Live traffic flow segment</span>
+          <span><i class="legend-dot monitor"></i> ITICAS monitoring point</span>
+          <span><i class="legend-dot incident"></i> Traffic incident</span>
+        </div>
+      </article>
+
+      <aside class="panel inspector">
+        <div class="panel-head"><div><span class="kicker">TRAFFIC EVALUATION</span><h3 id="selectedTitle">Select a location</h3></div></div>
+        <div id="evaluationEmpty" class="inspector-empty">
+          <strong>Search or click the map</strong>
+          <p>ITICAS will retrieve available current road speed, free-flow reference, travel time, delay, provider confidence, road closure status and nearby incidents.</p>
+        </div>
+
+        <div id="evaluationContent" hidden>
+          <div class="history-box"><span class="kicker">SELECTED ROAD / ADDRESS</span><strong id="selectedAddress">—</strong><div id="selectedCoordinates" style="margin-top:5px;color:#91a6c2">—</div></div>
+          <div class="mini-grid">
+            <div><span>Current speed</span><strong id="currentSpeed">—</strong></div>
+            <div><span>Free-flow speed</span><strong id="freeSpeed">—</strong></div>
+            <div><span>Congestion index</span><strong id="congestionIndex">—</strong></div>
+            <div><span>Delay</span><strong id="delaySeconds">—</strong></div>
+            <div><span>Confidence</span><strong id="confidence">—</strong></div>
+            <div><span>Incidents</span><strong id="incidentCount">—</strong></div>
+          </div>
+          <div class="validation-box"><span class="kicker">BENCHMARK RELATIONSHIP</span><strong id="validationStatus">—</strong><p id="validationText">—</p><div class="validation-stats"><span>Deviation <b id="deviationPct">—</b></span><span>Agreement <b id="agreementScore">—</b></span><span>Independence <b id="independence">—</b></span></div></div>
+          <div class="history-box"><span class="kicker">ITICAS STORED HISTORY</span><div id="historyText">No nearby configured monitoring history found.</div><a id="forecastSelectedRoad" class="secondary-btn" href="/predictions" hidden style="display:inline-block;margin-top:10px">Forecast this monitored road</a></div>
+          <div class="history-box"><span class="kicker">WEATHER CONTEXT</span><div id="weatherText">Weather context will be loaded independently of the traffic provider.</div></div>
+          <div class="monitor-form"><span class="kicker">ADD SELECTED POINT TO MONITORING</span><label>Name<input id="selectedName" maxlength="150"></label><label>Road / corridor<input id="selectedRoad" maxlength="200"></label><div class="two-field"><label>City / LGA<input id="selectedCity" maxlength="120"></label><label>State<input id="selectedState" maxlength="120"></label></div><label>Monitoring radius (m)<input id="selectedRadius" type="number" min="100" max="10000" value="1000"></label><button id="addMonitorBtn" class="primary-btn wide">Add as monitoring location</button><div id="monitorMessage" class="inline-message"></div></div>
+        </div>
+      </aside>
+    </section>
+
+    <section class="panel provenance-panel">
+      <div class="panel-head"><div><span class="kicker">SCIENTIFIC PROVENANCE</span><h3>What this page is showing</h3></div></div>
+      <div class="provenance-grid">
+        <div><strong>Basemap</strong><p>OpenStreetMap raster tiles provide the map only. ITICAS does not treat OSM tiles as traffic measurements.</p></div>
+        <div><strong>Search</strong><p>Nationwide search remains constrained to Nigeria and can be used independently of the basemap.</p></div>
+        <div><strong>Live traffic</strong><p>Live speed, free-flow speed, travel time and incidents come from the configured traffic provider at the selected coordinate.</p></div>
+        <div><strong>Stored history</strong><p>ITICAS monitoring/archive observations remain separate from the live point evaluation and are labelled by provenance.</p></div>
+      </div>
+    </section>
+
+    <footer><span>{{ app_name }}</span><span class="developer-credit">{{ developer_credit }}</span><span>Stage {{ stage }} · Version {{ version }}</span></footer>
+  </main>
+</div>
+<form method="post" action="/logout" style="position:fixed;right:22px;bottom:18px;z-index:1000"><button class="ghost-btn" type="submit">Sign out</button></form>
+<script>window.ITICAS_MAP_CONFIG={lat:{{ map_default_latitude }},lon:{{ map_default_longitude }},zoom:{{ map_default_zoom }},evaluationRadius:{{ map_evaluation_radius_m }}};</script>
+<!-- legacy cache token /static/js/map.js?v=22.3 superseded -->
+<script src="/static/js/map.js?v=24.1"></script>
+</body>
+</html>

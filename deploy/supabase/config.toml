@@ -1,0 +1,5 @@
+
+project_id = "REPLACE_WITH_PROJECT_REF"
+
+[functions.iticas-traffic-collector]
+verify_jwt = false
