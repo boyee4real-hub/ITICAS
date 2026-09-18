@@ -92,11 +92,11 @@ def bootstrap_production_admin():
     with db() as c:
         u=c.execute("SELECT * FROM users WHERE lower(email)=lower(?) OR lower(username)=lower(?)",(email,username)).fetchone()
         if u:
-            c.execute("UPDATE users SET role='admin',status='approved',permissions_json=?,approved_at=COALESCE(approved_at,?) WHERE id=?",
+            c.execute("UPDATE users SET role='primary_admin',status='approved',permissions_json=?,approved_at=COALESCE(approved_at,?) WHERE id=?",
                       (json.dumps(ALL_PERMISSIONS),now(),u["id"])); c.commit()
             return {"configured":True,"created":False}
         c.execute("INSERT INTO users(username,email,password_hash,full_name,organisation,phone,intended_use,role,status,permissions_json,created_at,approved_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                  (username,email,hpw(password),full_name,"","","Production administration","admin","approved",json.dumps(ALL_PERMISSIONS),now(),now()))
+                  (username,email,hpw(password),full_name,"","","Production administration","primary_admin","approved",json.dumps(ALL_PERMISSIONS),now(),now()))
         c.commit()
     return {"configured":True,"created":True}
 
@@ -109,6 +109,41 @@ def startup():
 def health():
     h=central_pg.health()
     return {"status":"ok","pending":h["pending"],"approved":h["approved"],"database_backend":h["backend"],"persistent_database":h["persistent"],"database_connection":h["connection"]}
+
+
+def _actor_from_admin_session(request: Request):
+    token=request.cookies.get("iticas_admin_session","")
+    if not token:return None
+    with db() as c:
+        return c.execute("SELECT u.* FROM admin_sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires_at>? AND u.status='approved' AND u.role IN ('admin','primary_admin')",(token,now())).fetchone()
+
+def _role_status_change(request:Request,uid:int,action:str):
+    actor=_actor_from_admin_session(request)
+    if not actor:raise HTTPException(401,"Administrator session required")
+    with db() as c:
+        target=c.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone()
+        if not target:raise HTTPException(404,"User not found")
+        if target["role"]=="primary_admin":raise HTTPException(403,"Primary administrator is protected")
+        if action in ("promote","demote") and actor["role"]!="primary_admin":
+            raise HTTPException(403,"Only the primary administrator can change administrator roles")
+        old_role,old_status=target["role"],target["status"]
+        if action=="promote": c.execute("UPDATE users SET role='admin',permissions_json=? WHERE id=?",(json.dumps(ALL_PERMISSIONS),uid))
+        elif action=="demote": c.execute("UPDATE users SET role='user',permissions_json=? WHERE id=?",(json.dumps(ALL_PERMISSIONS),uid))
+        elif action=="suspend": c.execute("UPDATE users SET status='suspended' WHERE id=?",(uid,))
+        elif action=="reactivate": c.execute("UPDATE users SET status='approved' WHERE id=?",(uid,))
+        else:raise HTTPException(400,"Unsupported action")
+        c.execute("INSERT INTO audit(actor_id,action,target_id,detail,created_at) VALUES(?,?,?,?,?)",(actor["id"],action,uid,json.dumps({"old_role":old_role,"old_status":old_status}),now()))
+        c.commit()
+    return RedirectResponse("/admin",status_code=303)
+
+@app.post("/admin/users/{uid}/promote")
+def promote_user(uid:int,request:Request):return _role_status_change(request,uid,"promote")
+@app.post("/admin/users/{uid}/demote")
+def demote_admin(uid:int,request:Request):return _role_status_change(request,uid,"demote")
+@app.post("/admin/users/{uid}/suspend")
+def suspend_user(uid:int,request:Request):return _role_status_change(request,uid,"suspend")
+@app.post("/admin/users/{uid}/reactivate")
+def reactivate_user(uid:int,request:Request):return _role_status_change(request,uid,"reactivate")
 
 @app.get("/api/production/readiness")
 def production_readiness():
