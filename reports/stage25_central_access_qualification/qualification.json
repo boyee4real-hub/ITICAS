@@ -1,0 +1,95 @@
+{
+  "product": "ITICAS",
+  "version": "0.26.3",
+  "stage": "25",
+  "gate": "Central Access Production Qualification",
+  "generated_at_utc": "2026-09-18T08:28:42.417626+00:00",
+  "status": "PASS",
+  "passed": [
+    {
+      "check": "Stage 23 durable Primary Admin",
+      "detail": ""
+    },
+    {
+      "check": "Primary Admin protected",
+      "detail": ""
+    },
+    {
+      "check": "Admin promotion",
+      "detail": ""
+    },
+    {
+      "check": "Admin demotion",
+      "detail": ""
+    },
+    {
+      "check": "Canonical audit schema",
+      "detail": ""
+    },
+    {
+      "check": "Role audit writer aligned",
+      "detail": ""
+    },
+    {
+      "check": "Administrator TOTP module",
+      "detail": ""
+    },
+    {
+      "check": "Admin-only TOTP role gate",
+      "detail": ""
+    },
+    {
+      "check": "One-time enrollment state",
+      "detail": ""
+    },
+    {
+      "check": "Five-minute 2FA challenge",
+      "detail": ""
+    },
+    {
+      "check": "Session issued after TOTP",
+      "detail": ""
+    },
+    {
+      "check": "QR response no-store",
+      "detail": ""
+    },
+    {
+      "check": "Secure HttpOnly cookie",
+      "detail": ""
+    },
+    {
+      "check": "PyOTP dependency",
+      "detail": ""
+    },
+    {
+      "check": "QR dependency",
+      "detail": ""
+    },
+    {
+      "check": "PostgreSQL persistence adapter",
+      "detail": ""
+    },
+    {
+      "check": "No obvious literal production secrets in auth source",
+      "detail": ""
+    },
+    {
+      "check": "Python compilation",
+      "detail": ""
+    }
+  ],
+  "failed": [],
+  "production_evidence_already_validated": [
+    "Render HTTPS gateway live",
+    "Neon PostgreSQL persistent",
+    "Brevo HTTPS transactional email operational",
+    "Primary Admin durable",
+    "Primary Admin TOTP enrollment successful",
+    "Primary Admin subsequent six-digit TOTP login successful",
+    "User-to-Admin promotion successful after audit repair",
+    "Promoted Admin independent first-time TOTP enrollment successful",
+    "Promoted Admin subsequent six-digit TOTP login successful"
+  ],
+  "note": "Production evidence above was validated interactively and is recorded here; this script does not repeat destructive workflow tests."
+}
