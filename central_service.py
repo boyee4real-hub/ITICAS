@@ -139,7 +139,7 @@ def _role_status_change(request:Request,uid:int,action:str):
         elif action=="reactivate":
             new_status="approved"; c.execute("UPDATE users SET status='approved' WHERE id=?",(uid,))
         else: raise HTTPException(400,"Unsupported action")
-        c.execute("INSERT INTO audit(actor_id,action,target_id,detail,created_at) VALUES(?,?,?,?,?)",(actor["id"],action,uid,json.dumps({"old_role":old_role,"new_role":new_role,"old_status":old_status,"new_status":new_status}),now()))
+        c.execute("INSERT INTO audit(occurred_at,action,actor_user_id,target_user_id,details_json) VALUES(?,?,?,?,?)",(now(),action,actor["id"],uid,json.dumps({"old_role":old_role,"new_role":new_role,"old_status":old_status,"new_status":new_status})))
         c.commit()
     return RedirectResponse("/admin",status_code=303)
 
