@@ -1,5 +1,5 @@
 from __future__ import annotations
-import hashlib,hmac,html,json,os,secrets,smtplib,sqlite3
+import hashlib,hmac,html,json,os,secrets,smtplib,sqlite3,urllib.request,urllib.error
 from datetime import datetime,timedelta,timezone
 from email.message import EmailMessage
 from pathlib import Path
@@ -34,16 +34,36 @@ def vpw(p,e):
     except Exception:return False
 def th(t): return hashlib.sha256(t.encode()).hexdigest()
 def mail(to,subject,body):
+    api_key=os.environ.get("ITICAS_BREVO_API_KEY","").strip()
+    sender=os.environ.get("ITICAS_EMAIL_FROM","").strip()
+    sender_name=os.environ.get("ITICAS_EMAIL_FROM_NAME","ITICAS Access Administration").strip()
+    if api_key and sender:
+        payload=json.dumps({"sender":{"name":sender_name,"email":sender},"to":[{"email":to}],
+                            "subject":subject,"textContent":body}).encode("utf-8")
+        req=urllib.request.Request("https://api.brevo.com/v3/smtp/email",data=payload,
+            headers={"accept":"application/json","api-key":api_key,"content-type":"application/json"},method="POST")
+        try:
+            with urllib.request.urlopen(req,timeout=20) as r:
+                return 200 <= int(r.status) < 300
+        except urllib.error.HTTPError as e:
+            raise RuntimeError(f"Brevo email API returned HTTP {e.code}") from e
+        except urllib.error.URLError as e:
+            raise RuntimeError("Brevo email API could not be reached.") from e
     host=os.environ.get("ITICAS_SMTP_HOST","").strip(); user=os.environ.get("ITICAS_SMTP_USERNAME","").strip()
     pwd=os.environ.get("ITICAS_SMTP_PASSWORD",""); sender=os.environ.get("ITICAS_SMTP_FROM",user).strip()
     port=int(os.environ.get("ITICAS_SMTP_PORT","587"))
     if not host or not sender:return False
     m=EmailMessage(); m["From"]=sender; m["To"]=to; m["Subject"]=subject; m.set_content(body)
-    with smtplib.SMTP(host,port,timeout=20) as s:
-        s.starttls()
-        if user:s.login(user,pwd)
-        s.send_message(m)
+    with smtplib.SMTP(host,port,timeout=20) as smtp:
+        smtp.starttls()
+        if user:smtp.login(user,pwd)
+        smtp.send_message(m)
     return True
+
+def email_backend_status():
+    return {"brevo_https_api_configured":bool(os.environ.get("ITICAS_BREVO_API_KEY","").strip() and os.environ.get("ITICAS_EMAIL_FROM","").strip()),
+            "smtp_fallback_configured":bool(os.environ.get("ITICAS_SMTP_HOST","").strip()),"secrets_exposed":False}
+
 def admin_email():
     x=os.environ.get("ITICAS_ADMIN_EMAIL","").strip()
     if x:return x
@@ -63,13 +83,41 @@ class Req(BaseModel):
 class Login(BaseModel):
     identifier:str; password:str
 
+def bootstrap_production_admin():
+    email=os.environ.get("ITICAS_ADMIN_EMAIL","").strip().lower()
+    username=os.environ.get("ITICAS_ADMIN_USERNAME","").strip()
+    password=os.environ.get("ITICAS_ADMIN_BOOTSTRAP_PASSWORD","")
+    full_name=os.environ.get("ITICAS_ADMIN_FULL_NAME","ITICAS Administrator").strip()
+    if not email or not username or not password:return {"configured":False,"created":False}
+    with db() as c:
+        u=c.execute("SELECT * FROM users WHERE lower(email)=lower(?) OR lower(username)=lower(?)",(email,username)).fetchone()
+        if u:
+            c.execute("UPDATE users SET role='admin',status='approved',permissions_json=?,approved_at=COALESCE(approved_at,?) WHERE id=?",
+                      (json.dumps(ALL_PERMISSIONS),now(),u["id"])); c.commit()
+            return {"configured":True,"created":False}
+        c.execute("INSERT INTO users(username,email,password_hash,full_name,organisation,phone,intended_use,role,status,permissions_json,created_at,approved_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
+                  (username,email,hpw(password),full_name,"","","Production administration","admin","approved",json.dumps(ALL_PERMISSIONS),now(),now()))
+        c.commit()
+    return {"configured":True,"created":True}
+
 @app.on_event("startup")
-def startup():init()
+def startup():
+    init()
+    bootstrap_production_admin()
 
 @app.get("/health")
 def health():
     h=central_pg.health()
     return {"status":"ok","pending":h["pending"],"approved":h["approved"],"database_backend":h["backend"],"persistent_database":h["persistent"],"database_connection":h["connection"]}
+
+@app.get("/api/production/readiness")
+def production_readiness():
+    e=email_backend_status()
+    checks={"persistent_postgresql":bool(os.environ.get("ITICAS_CENTRAL_DATABASE_URL","").strip()),
+            "brevo_https_email":e["brevo_https_api_configured"],
+            "production_admin_bootstrap":bool(os.environ.get("ITICAS_ADMIN_EMAIL","").strip() and os.environ.get("ITICAS_ADMIN_USERNAME","").strip() and os.environ.get("ITICAS_ADMIN_BOOTSTRAP_PASSWORD","")),
+            "https_gateway":True}
+    return {"status":"ready" if all(checks.values()) else "configuration_required","checks":checks,"secrets_exposed":False}
 
 @app.post("/api/access/request")
 def access_request(x:Req):
