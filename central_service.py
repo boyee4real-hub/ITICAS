@@ -6,6 +6,7 @@ from pathlib import Path
 from fastapi import FastAPI,HTTPException,Request
 from fastapi.responses import HTMLResponse,RedirectResponse
 from pydantic import BaseModel
+import central_postgres as central_pg
 
 DB=Path(os.environ.get("ITICAS_CENTRAL_DB",str(Path(__file__).with_name("central_access.db"))))
 DB.parent.mkdir(parents=True,exist_ok=True)
@@ -16,14 +17,9 @@ app=FastAPI(title="ITICAS Central Access Service",version="1.0.0")
 
 def now(): return datetime.now(timezone.utc).isoformat()
 def db():
-    c=sqlite3.connect(DB); c.row_factory=sqlite3.Row; return c
+    return central_pg.db()
 def init():
-    with db() as c:
-        c.executescript("""
-        CREATE TABLE IF NOT EXISTS users(id INTEGER PRIMARY KEY AUTOINCREMENT,username TEXT UNIQUE COLLATE NOCASE,email TEXT UNIQUE COLLATE NOCASE,password_hash TEXT,full_name TEXT,organisation TEXT,phone TEXT,intended_use TEXT,role TEXT DEFAULT 'user',status TEXT DEFAULT 'pending',permissions_json TEXT DEFAULT '[]',created_at TEXT,approved_at TEXT,rejected_at TEXT,last_login_at TEXT);
-        CREATE TABLE IF NOT EXISTS admin_sessions(id INTEGER PRIMARY KEY AUTOINCREMENT,token_hash TEXT UNIQUE,user_id INTEGER,expires_at TEXT,created_at TEXT);
-        CREATE TABLE IF NOT EXISTS audit(id INTEGER PRIMARY KEY AUTOINCREMENT,occurred_at TEXT,action TEXT,actor_user_id INTEGER,target_user_id INTEGER,details_json TEXT);
-        """); c.commit()
+    central_pg.init_schema()
 def hpw(p):
     if len(p)<12: raise ValueError("Password must contain at least 12 characters.")
     salt=secrets.token_bytes(16); n,r,q=2**14,8,1
@@ -72,10 +68,8 @@ def startup():init()
 
 @app.get("/health")
 def health():
-    with db() as c:
-        p=c.execute("SELECT COUNT(*) n FROM users WHERE status='pending'").fetchone()["n"]
-        a=c.execute("SELECT COUNT(*) n FROM users WHERE status='approved'").fetchone()["n"]
-    return {"status":"ok","pending":p,"approved":a}
+    h=central_pg.health()
+    return {"status":"ok","pending":h["pending"],"approved":h["approved"],"database_backend":h["backend"],"persistent_database":h["persistent"],"database_connection":h["connection"]}
 
 @app.post("/api/access/request")
 def access_request(x:Req):
