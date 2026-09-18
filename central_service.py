@@ -68,7 +68,7 @@ def admin_email():
     x=os.environ.get("ITICAS_ADMIN_EMAIL","").strip()
     if x:return x
     with db() as c:
-        r=c.execute("SELECT email FROM users WHERE role='admin' AND status='approved' ORDER BY id LIMIT 1").fetchone()
+        r=c.execute("SELECT email FROM users WHERE role IN ('admin','primary_admin') AND status='approved' ORDER BY id LIMIT 1").fetchone()
     return r["email"] if r else None
 def admin_from_req(req):
     raw=req.cookies.get(COOKIE)
@@ -77,7 +77,7 @@ def admin_from_req(req):
         s=c.execute("SELECT * FROM admin_sessions WHERE token_hash=?",(th(raw),)).fetchone()
         if not s:return None
         if datetime.fromisoformat(s["expires_at"])<=datetime.now(timezone.utc):return None
-        return c.execute("SELECT * FROM users WHERE id=? AND role='admin' AND status='approved'",(s["user_id"],)).fetchone()
+        return c.execute("SELECT * FROM users WHERE id=? AND role IN ('admin','primary_admin') AND status='approved'",(s["user_id"],)).fetchone()
 class Req(BaseModel):
     username:str; email:str; password:str; full_name:str; organisation:str=""; phone:str=""; intended_use:str=""
 class Login(BaseModel):
@@ -177,7 +177,7 @@ def access_login(x:Login):
         u=c.execute("SELECT * FROM users WHERE lower(username)=? OR lower(email)=?",(ident,ident)).fetchone()
         if not u or u["status"]!="approved" or not vpw(x.password,u["password_hash"]): raise HTTPException(401,"Invalid credentials or account is not approved.")
         c.execute("UPDATE users SET last_login_at=? WHERE id=?",(now(),u["id"])); c.commit()
-        perms=list(ALL_PERMISSIONS) if u["role"]=="admin" else json.loads(u["permissions_json"] or "[]")
+        perms=list(ALL_PERMISSIONS) if u["role"] in ("admin","primary_admin") else json.loads(u["permissions_json"] or "[]")
         return {"id":u["id"],"username":u["username"],"email":u["email"],"role":u["role"],"status":u["status"],"permissions":perms}
 
 @app.get("/admin/login",response_class=HTMLResponse)
@@ -189,7 +189,7 @@ def admin_login_page(req:Request):
 async def admin_login(req:Request):
     f=await req.form(); ident=str(f.get("identifier","")).strip().lower(); pwd=str(f.get("password",""))
     with db() as c:
-        u=c.execute("SELECT * FROM users WHERE (lower(username)=? OR lower(email)=?) AND role='admin' AND status='approved'",(ident,ident)).fetchone()
+        u=c.execute("SELECT * FROM users WHERE (lower(username)=? OR lower(email)=?) AND role IN ('admin','primary_admin') AND status='approved'",(ident,ident)).fetchone()
         if not u or not vpw(pwd,u["password_hash"]):return HTMLResponse("Administrator sign-in failed.",401)
         raw=secrets.token_urlsafe(48); exp=(datetime.now(timezone.utc)+timedelta(hours=8)).isoformat()
         c.execute("INSERT INTO admin_sessions(token_hash,user_id,expires_at,created_at) VALUES(?,?,?,?)",(th(raw),u["id"],exp,now())); c.commit()
