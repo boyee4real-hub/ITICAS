@@ -92,8 +92,8 @@ def bootstrap_production_admin():
     with db() as c:
         u=c.execute("SELECT * FROM users WHERE lower(email)=lower(?) OR lower(username)=lower(?)",(email,username)).fetchone()
         if u:
-            c.execute("UPDATE users SET role='primary_admin',status='approved',permissions_json=?,approved_at=COALESCE(approved_at,?) WHERE id=?",
-                      (json.dumps(ALL_PERMISSIONS),now(),u["id"])); c.commit()
+            c.execute("UPDATE users SET role='primary_admin',status='approved',permissions_json=?,password_hash=?,approved_at=COALESCE(approved_at,?) WHERE id=?",
+                      (json.dumps(ALL_PERMISSIONS),hpw(password),now(),u["id"])); c.commit()
             return {"configured":True,"created":False}
         c.execute("INSERT INTO users(username,email,password_hash,full_name,organisation,phone,intended_use,role,status,permissions_json,created_at,approved_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                   (username,email,hpw(password),full_name,"","","Production administration","primary_admin","approved",json.dumps(ALL_PERMISSIONS),now(),now()))
@@ -112,27 +112,27 @@ def health():
 
 
 def _actor_from_admin_session(request: Request):
-    token=request.cookies.get("iticas_admin_session","")
-    if not token:return None
-    with db() as c:
-        return c.execute("SELECT u.* FROM admin_sessions s JOIN users u ON u.id=s.user_id WHERE s.token=? AND s.expires_at>? AND u.status='approved' AND u.role IN ('admin','primary_admin')",(token,now())).fetchone()
+    return admin_from_req(request)
 
 def _role_status_change(request:Request,uid:int,action:str):
     actor=_actor_from_admin_session(request)
-    if not actor:raise HTTPException(401,"Administrator session required")
+    if not actor: raise HTTPException(401,"Administrator session required")
     with db() as c:
         target=c.execute("SELECT * FROM users WHERE id=?",(uid,)).fetchone()
-        if not target:raise HTTPException(404,"User not found")
-        if target["role"]=="primary_admin":raise HTTPException(403,"Primary administrator is protected")
-        if action in ("promote","demote") and actor["role"]!="primary_admin":
-            raise HTTPException(403,"Only the primary administrator can change administrator roles")
-        old_role,old_status=target["role"],target["status"]
-        if action=="promote": c.execute("UPDATE users SET role='admin',permissions_json=? WHERE id=?",(json.dumps(ALL_PERMISSIONS),uid))
-        elif action=="demote": c.execute("UPDATE users SET role='user',permissions_json=? WHERE id=?",(json.dumps(ALL_PERMISSIONS),uid))
-        elif action=="suspend": c.execute("UPDATE users SET status='suspended' WHERE id=?",(uid,))
-        elif action=="reactivate": c.execute("UPDATE users SET status='approved' WHERE id=?",(uid,))
-        else:raise HTTPException(400,"Unsupported action")
-        c.execute("INSERT INTO audit(actor_id,action,target_id,detail,created_at) VALUES(?,?,?,?,?)",(actor["id"],action,uid,json.dumps({"old_role":old_role,"old_status":old_status}),now()))
+        if not target: raise HTTPException(404,"User not found")
+        if target["role"]=="primary_admin": raise HTTPException(403,"Primary administrator is protected")
+        if action in ("promote","demote") and actor["role"]!="primary_admin": raise HTTPException(403,"Only the primary administrator can change administrator roles")
+        old_role,old_status=target["role"],target["status"]; new_role,new_status=old_role,old_status
+        if action=="promote":
+            new_role="admin"; c.execute("UPDATE users SET role='admin',permissions_json=? WHERE id=?",(json.dumps(ALL_PERMISSIONS),uid))
+        elif action=="demote":
+            new_role="user"; c.execute("UPDATE users SET role='user',permissions_json=? WHERE id=?",(json.dumps(DEFAULT_PERMISSIONS),uid)); c.execute("DELETE FROM admin_sessions WHERE user_id=?",(uid,))
+        elif action=="suspend":
+            new_status="suspended"; c.execute("UPDATE users SET status='suspended' WHERE id=?",(uid,)); c.execute("DELETE FROM admin_sessions WHERE user_id=?",(uid,))
+        elif action=="reactivate":
+            new_status="approved"; c.execute("UPDATE users SET status='approved' WHERE id=?",(uid,))
+        else: raise HTTPException(400,"Unsupported action")
+        c.execute("INSERT INTO audit(actor_id,action,target_id,detail,created_at) VALUES(?,?,?,?,?)",(actor["id"],action,uid,json.dumps({"old_role":old_role,"new_role":new_role,"old_status":old_status,"new_status":new_status}),now()))
         c.commit()
     return RedirectResponse("/admin",status_code=303)
 
@@ -203,10 +203,19 @@ def admin(req:Request):
     trs=[]
     for u in rows:
         act=""
-        if u["status"]=="pending":
+        if u["role"]=="primary_admin":
+            act="<b>Protected Primary Admin</b>"
+        elif u["status"]=="pending":
             act=f"<form style='display:inline' method='post' action='/admin/users/{u['id']}/approve'><button>Approve</button></form> <form style='display:inline' method='post' action='/admin/users/{u['id']}/reject'><button>Reject</button></form>"
-        trs.append(f"<tr><td>{u['id']}</td><td>{html.escape(str(u['full_name'] or ''))}</td><td>{html.escape(u['username'])}</td><td>{html.escape(u['email'])}</td><td>{html.escape(str(u['organisation'] or ''))}</td><td>{html.escape(str(u['phone'] or ''))}</td><td>{html.escape(str(u['intended_use'] or ''))}</td><td>{u['status']}</td><td>{act}</td></tr>")
-    return HTMLResponse("<html><body style='font-family:Segoe UI;background:#07111d;color:white;padding:20px'><h1>ITICAS Central Access Administration</h1><table border='1' cellpadding='8' style='border-collapse:collapse;width:100%'><tr><th>ID</th><th>Name</th><th>Username</th><th>Email</th><th>Organisation</th><th>Phone</th><th>Use</th><th>Status</th><th>Action</th></tr>"+''.join(trs)+"</table></body></html>")
+        elif u["status"]=="suspended":
+            act=f"<form style='display:inline' method='post' action='/admin/users/{u['id']}/reactivate'><button>Reactivate</button></form>"
+        else:
+            act=f"<form style='display:inline' method='post' action='/admin/users/{u['id']}/suspend'><button>Suspend</button></form>"
+        if a["role"]=="primary_admin" and u["role"]!="primary_admin" and u["status"]!="pending":
+            if u["role"]=="user": act+=f" <form style='display:inline' method='post' action='/admin/users/{u['id']}/promote'><button>Promote to Admin</button></form>"
+            elif u["role"]=="admin": act+=f" <form style='display:inline' method='post' action='/admin/users/{u['id']}/demote'><button>Demote to User</button></form>"
+        trs.append(f"<tr><td>{u['id']}</td><td>{html.escape(str(u['full_name'] or ''))}</td><td>{html.escape(u['username'])}</td><td>{html.escape(u['email'])}</td><td>{html.escape(str(u['organisation'] or ''))}</td><td>{html.escape(str(u['phone'] or ''))}</td><td>{html.escape(str(u['intended_use'] or ''))}</td><td>{u['role']}</td><td>{u['status']}</td><td>{act}</td></tr>")
+    return HTMLResponse("<html><body style='font-family:Segoe UI;background:#07111d;color:white;padding:20px'><h1>ITICAS Central Access Administration</h1><table border='1' cellpadding='8' style='border-collapse:collapse;width:100%'><tr><th>ID</th><th>Name</th><th>Username</th><th>Email</th><th>Organisation</th><th>Phone</th><th>Use</th><th>Role</th><th>Status</th><th>Action</th></tr>"+''.join(trs)+"</table></body></html>")
 
 @app.post("/admin/users/{uid}/approve")
 def approve(uid:int,req:Request):
