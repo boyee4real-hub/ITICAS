@@ -14,3 +14,5 @@ Pillow==12.3.0
 
 tzdata>=2025.2
 psycopg[binary]==3.2.10
+pyotp
+qrcode[pil]

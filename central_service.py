@@ -4,6 +4,7 @@ from datetime import datetime,timedelta,timezone
 from email.message import EmailMessage
 from pathlib import Path
 from fastapi import FastAPI,HTTPException,Request
+from stage24_admin_2fa import install as install_admin_2fa
 from fastapi.responses import HTMLResponse,RedirectResponse
 from pydantic import BaseModel
 import central_postgres as central_pg
@@ -195,9 +196,12 @@ async def admin_login(req:Request):
     with db() as c:
         u=c.execute("SELECT * FROM users WHERE (lower(username)=? OR lower(email)=?) AND role IN ('admin','primary_admin') AND status='approved'",(ident,ident)).fetchone()
         if not u or not vpw(pwd,u["password_hash"]):return HTMLResponse("Administrator sign-in failed.",401)
-        raw=secrets.token_urlsafe(48); exp=(datetime.now(timezone.utc)+timedelta(hours=8)).isoformat()
-        c.execute("INSERT INTO admin_sessions(token_hash,user_id,expires_at,created_at) VALUES(?,?,?,?)",(th(raw),u["id"],exp,now())); c.commit()
-    r=RedirectResponse("/admin",303); r.set_cookie(COOKIE,raw,httponly=True,samesite="strict",max_age=28800); return r
+    # Stage 24: password success creates only a short-lived 2FA challenge.
+    with db() as c:
+        raw=app.state.iticas_2fa_challenge(c,u["id"])
+    r=RedirectResponse("/admin/2fa",303)
+    r.set_cookie(app.state.iticas_2fa_cookie,raw,httponly=True,samesite="strict",secure=True,max_age=300)
+    return r
 
 @app.get("/admin",response_class=HTMLResponse)
 def admin(req:Request):
@@ -378,3 +382,6 @@ async def provider_status():
         "alternate_provider_configured":bool(_central_alt_url()),
         "credential_exposed":False,
     }
+
+# Stage 24 Administrator TOTP 2FA
+install_admin_2fa(app,db,COOKIE)
