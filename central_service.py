@@ -88,18 +88,24 @@ def bootstrap_production_admin():
     username=os.environ.get("ITICAS_ADMIN_USERNAME","").strip()
     password=os.environ.get("ITICAS_ADMIN_BOOTSTRAP_PASSWORD","")
     full_name=os.environ.get("ITICAS_ADMIN_FULL_NAME","ITICAS Administrator").strip()
-    if not email or not username or not password:return {"configured":False,"created":False}
     with db() as c:
+        pa=c.execute("SELECT * FROM users WHERE role=\'primary_admin\' ORDER BY id LIMIT 1").fetchone()
+        if pa:
+            # Durable Primary Admin exists: preserve its stored password hash.
+            if pa["status"]!="approved":
+                c.execute("UPDATE users SET status=\'approved\',permissions_json=? WHERE id=?",(json.dumps(ALL_PERMISSIONS),pa["id"]))
+                c.commit()
+            return {"configured":True,"created":False,"durable":True}
+        if not email or not username or not password:
+            return {"configured":False,"created":False,"durable":False}
         u=c.execute("SELECT * FROM users WHERE lower(email)=lower(?) OR lower(username)=lower(?)",(email,username)).fetchone()
         if u:
-            c.execute("UPDATE users SET role='primary_admin',status='approved',permissions_json=?,password_hash=?,approved_at=COALESCE(approved_at,?) WHERE id=?",
-                      (json.dumps(ALL_PERMISSIONS),hpw(password),now(),u["id"])); c.commit()
-            return {"configured":True,"created":False}
-        c.execute("INSERT INTO users(username,email,password_hash,full_name,organisation,phone,intended_use,role,status,permissions_json,created_at,approved_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
-                  (username,email,hpw(password),full_name,"","","Production administration","primary_admin","approved",json.dumps(ALL_PERMISSIONS),now(),now()))
+            c.execute("UPDATE users SET role=\'primary_admin\',status=\'approved\',permissions_json=?,password_hash=?,approved_at=COALESCE(approved_at,?) WHERE id=?",(json.dumps(ALL_PERMISSIONS),hpw(password),now(),u["id"]))
+            c.commit()
+            return {"configured":True,"created":False,"durable":True}
+        c.execute("INSERT INTO users(username,email,password_hash,full_name,organisation,phone,intended_use,role,status,permissions_json,created_at,approved_at) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",(username,email,hpw(password),full_name,"","","Production administration","primary_admin","approved",json.dumps(ALL_PERMISSIONS),now(),now()))
         c.commit()
-    return {"configured":True,"created":True}
-
+    return {"configured":True,"created":True,"durable":True}
 @app.on_event("startup")
 def startup():
     init()
@@ -148,12 +154,10 @@ def reactivate_user(uid:int,request:Request):return _role_status_change(request,
 @app.get("/api/production/readiness")
 def production_readiness():
     e=email_backend_status()
-    checks={"persistent_postgresql":bool(os.environ.get("ITICAS_CENTRAL_DATABASE_URL","").strip()),
-            "brevo_https_email":e["brevo_https_api_configured"],
-            "production_admin_bootstrap":bool(os.environ.get("ITICAS_ADMIN_EMAIL","").strip() and os.environ.get("ITICAS_ADMIN_USERNAME","").strip() and os.environ.get("ITICAS_ADMIN_BOOTSTRAP_PASSWORD","")),
-            "https_gateway":True}
-    return {"status":"ready" if all(checks.values()) else "configuration_required","checks":checks,"secrets_exposed":False}
-
+    with db() as c:
+        pa=c.execute("SELECT 1 FROM users WHERE role=\'primary_admin\' AND status=\'approved\' LIMIT 1").fetchone()
+    checks={"persistent_postgresql":bool(os.environ.get("ITICAS_CENTRAL_DATABASE_URL","").strip()),"brevo_https_email":e["brevo_https_api_configured"],"primary_admin_present":bool(pa),"https_gateway":True}
+    return {"status":"ready" if all(checks.values()) else "configuration_required","checks":checks,"bootstrap_password_required":not bool(pa),"secrets_exposed":False}
 @app.post("/api/access/request")
 def access_request(x:Req):
     try: pw=hpw(x.password)
