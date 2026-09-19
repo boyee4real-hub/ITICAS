@@ -255,8 +255,20 @@ class ProviderTrafficRequest(BaseModel):
     longitude: float
     radius_m: int = 1500
 
-def _central_tomtom_key():
-    return os.environ.get("ITICAS_TOMTOM_API_KEY","").strip()
+def _central_tomtom_credentials():
+    raw=(os.environ.get("ITICAS_TOMTOM_API_KEYS") or os.environ.get("TOMTOM_API_KEYS") or "").strip()
+    out=[]
+    if raw:
+        for i,token in enumerate(raw.split(","),1):
+            token=token.strip()
+            if not token: continue
+            if ":" in token: name,key=token.split(":",1)
+            else: name,key=f"key{i}",token
+            if key.strip(): out.append((name.strip() or f"key{i}",key.strip()))
+    if not out:
+        key=(os.environ.get("ITICAS_TOMTOM_API_KEY") or os.environ.get("TOMTOM_API_KEY") or "").strip()
+        if key: out.append(("primary",key))
+    return out
 
 def _central_alt_url():
     return os.environ.get("ITICAS_ALT_TRAFFIC_URL","").strip()
@@ -271,40 +283,46 @@ def _congestion(current_speed, free_flow_speed):
 
 async def _tomtom_flow(latitude, longitude):
     import httpx
-    key=_central_tomtom_key()
-    if not key:
+    creds=_central_tomtom_credentials()
+    if not creds:
         return None, {"provider":"TomTom Traffic API","category":"provider_not_configured","message":"Server-side TomTom credential is not configured.","retryable":False}
     url="https://api.tomtom.com/traffic/services/4/flowSegmentData/absolute/10/json"
-    try:
-        async with httpx.AsyncClient(timeout=20.0) as client:
-            r=await client.get(url,params={"key":key,"point":f"{float(latitude):.7f},{float(longitude):.7f}","unit":"kmph","openLr":"false"})
-    except httpx.HTTPError:
-        return None, {"provider":"TomTom Traffic API","category":"network_failure","message":"TomTom could not be reached from the central service.","retryable":True}
-    body=r.text or ""
-    if r.status_code>=400:
-        low=body.lower()
-        if r.status_code==403 and ("insufficientfunds" in low or "enough credits" in low or "insufficient funds" in low):
-            return None, {"provider":"TomTom Traffic API","category":"provider_credit_exhausted","message":"TomTom traffic quota/credits are exhausted.","retryable":False,"http_status":403}
+    for index,(alias,key) in enumerate(creds):
+        try:
+            async with httpx.AsyncClient(timeout=20.0) as client:
+                r=await client.get(url,params={"key":key,"point":f"{float(latitude):.7f},{float(longitude):.7f}","unit":"kmph","openLr":"false"},headers={"Accept":"application/json"})
+        except httpx.HTTPError:
+            return None, {"provider":"TomTom Traffic API","category":"network_failure","message":"TomTom could not be reached from the central service.","retryable":True}
+        body=r.text or ""; low=body.lower()
+        if r.status_code==200:
+            try: data=r.json().get("flowSegmentData") or {}
+            except Exception: data={}
+            if not data:
+                return None, {"provider":"TomTom Traffic API","category":"no_flow_data","message":"TomTom returned no flow segment for this location.","retryable":False}
+            current=data.get("currentSpeed"); free=data.get("freeFlowSpeed")
+            curtt=data.get("currentTravelTime"); freett=data.get("freeFlowTravelTime")
+            delay=max(0.0,float(curtt)-float(freett)) if curtt is not None and freett is not None else None
+            return {"current_speed_kmh":float(current) if current is not None else None,
+                    "free_flow_speed_kmh":float(free) if free is not None else None,
+                    "congestion_index":_congestion(current,free),"delay_seconds":delay,
+                    "current_travel_time_seconds":float(curtt) if curtt is not None else None,
+                    "free_flow_travel_time_seconds":float(freett) if freett is not None else None,
+                    "confidence":float(data["confidence"]) if data.get("confidence") is not None else None,
+                    "road_closed":1 if data.get("roadClosure") is True else 0 if data.get("roadClosure") is False else None,
+                    "functional_road_class":data.get("frc"),
+                    "segment_geometry_json":json.dumps(data.get("coordinates"),separators=(",",":")) if data.get("coordinates") is not None else None,
+                    "provider":"TomTom Traffic API","evidence_type":"direct_live_flow_segment"},None
         if r.status_code==429:
             return None, {"provider":"TomTom Traffic API","category":"rate_limited","message":"TomTom traffic rate limit reached.","retryable":True,"http_status":429}
+        if r.status_code==403 and any(x in low for x in ("insufficientfunds","enough credits","insufficient funds","quota")):
+            return None, {"provider":"TomTom Traffic API","category":"provider_credit_exhausted","message":"TomTom traffic quota/credits are exhausted.","retryable":False,"http_status":403}
+        if r.status_code==400:
+            return None, {"provider":"TomTom Traffic API","category":"flow_unavailable_for_request","message":"TomTom did not return Flow Segment Data for this request/location.","retryable":False,"http_status":400}
+        if r.status_code in (401,403):
+            if index+1 < len(creds): continue
+            return None, {"provider":"TomTom Traffic API","credential_alias":alias,"category":"authentication_or_entitlement_failure","message":"TomTom rejected the configured credential.","retryable":False,"http_status":r.status_code}
         return None, {"provider":"TomTom Traffic API","category":"provider_http_error","message":f"TomTom returned HTTP {r.status_code}.","retryable":r.status_code>=500,"http_status":r.status_code}
-    data=r.json().get("flowSegmentData") or {}
-    if not data:
-        return None, {"provider":"TomTom Traffic API","category":"no_flow_data","message":"TomTom returned no flow segment.","retryable":False}
-    current=data.get("currentSpeed"); free=data.get("freeFlowSpeed")
-    curtt=data.get("currentTravelTime"); freett=data.get("freeFlowTravelTime")
-    delay=max(0.0,float(curtt)-float(freett)) if curtt is not None and freett is not None else None
-    row={
-        "current_speed_kmh":float(current) if current is not None else None,
-        "free_flow_speed_kmh":float(free) if free is not None else None,
-        "congestion_index":_congestion(current,free),
-        "delay_seconds":delay,
-        "confidence":float(data["confidence"]) if data.get("confidence") is not None else None,
-        "road_closed":1 if data.get("roadClosure") is True else 0 if data.get("roadClosure") is False else None,
-        "segment_geometry_json":json.dumps(data.get("coordinates"),separators=(",",":")) if data.get("coordinates") is not None else None,
-        "provider":"TomTom Traffic API",
-    }
-    return row,None
+    return None, {"provider":"TomTom Traffic API","category":"live_provider_unavailable","message":"TomTom live flow is unavailable.","retryable":False}
 
 async def _alternate_flow(latitude,longitude,radius_m):
     import httpx
@@ -378,7 +396,9 @@ async def provider_traffic_evaluate(x: ProviderTrafficRequest):
 async def provider_status():
     return {
         "broker":"ITICAS Central Provider Broker",
-        "tomtom_configured":bool(_central_tomtom_key()),
+        "tomtom_configured":bool(_central_tomtom_credentials()),
+        "tomtom_credential_count":len(_central_tomtom_credentials()),
+        "tomtom_credential_aliases":[x[0] for x in _central_tomtom_credentials()],
         "alternate_provider_configured":bool(_central_alt_url()),
         "credential_exposed":False,
     }
