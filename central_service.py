@@ -284,7 +284,7 @@ async def _mapbox_route_proxy(latitude,longitude,radius_m):
     dlon=half/(111320.0*max(.2,abs(math.cos(math.radians(lat)))))
     coords=f"{lon-dlon:.7f},{lat:.7f};{lon+dlon:.7f},{lat:.7f}"
     url=f"https://api.mapbox.com/directions/v5/mapbox/driving-traffic/{coords}"
-    params={"access_token":token,"alternatives":"false","annotations":"congestion,duration,distance","overview":"false","steps":"false"}
+    params={"access_token":token,"alternatives":"false","annotations":"congestion,duration,distance","overview":"full","steps":"false"}
     try:
         async with httpx.AsyncClient(timeout=25.0) as c: r=await c.get(url,params=params)
     except httpx.HTTPError:
