@@ -270,6 +270,40 @@ def _central_tomtom_credentials():
         if key: out.append(("primary",key))
     return out
 
+
+def _central_mapbox_token():
+    return (os.environ.get("MAPBOX_ACCESS_TOKEN") or os.environ.get("ITICAS_MAPBOX_ACCESS_TOKEN") or "").strip()
+
+async def _mapbox_route_proxy(latitude,longitude,radius_m):
+    import httpx, math
+    token=_central_mapbox_token()
+    if not token:
+        return None, {"provider":"Mapbox Directions API","category":"provider_not_configured","retryable":False}
+    lat=float(latitude); lon=float(longitude)
+    half=max(250.0,min(750.0,float(radius_m)/2.0))
+    dlon=half/(111320.0*max(.2,abs(math.cos(math.radians(lat)))))
+    coords=f"{lon-dlon:.7f},{lat:.7f};{lon+dlon:.7f},{lat:.7f}"
+    url=f"https://api.mapbox.com/directions/v5/mapbox/driving-traffic/{coords}"
+    params={"access_token":token,"alternatives":"false","annotations":"congestion,duration,distance","overview":"false","steps":"false"}
+    try:
+        async with httpx.AsyncClient(timeout=25.0) as c: r=await c.get(url,params=params)
+    except httpx.HTTPError:
+        return None, {"provider":"Mapbox Directions API","category":"network_failure","retryable":True}
+    if r.status_code==200:
+        routes=(r.json().get("routes") or [])
+        if not routes: return None, {"provider":"Mapbox Directions API","category":"route_evidence_unavailable","retryable":False}
+        q=routes[0]; dur=q.get("duration"); typ=q.get("duration_typical")
+        tti=float(dur)/float(typ) if dur is not None and typ not in (None,0) else None
+        sev="unknown" if tti is None else ("free_flow_or_low" if tti<1.10 else "moderate" if tti<1.25 else "heavy" if tti<1.50 else "severe")
+        delay=max(0.0,float(dur)-float(typ)) if dur is not None and typ not in (None,0) else None
+        return {"provider":"Mapbox Directions API","evidence_type":"traffic_aware_route","direct_point_speed":False,
+        "proxy_type":"nearby_corridor_route_proxy","route_length_m":q.get("distance"),"travel_time_seconds":dur,
+        "typical_travel_time_seconds":typ,"traffic_delay_seconds":round(delay,3) if delay is not None else None,
+        "travel_time_index":round(tti,4) if tti is not None else None,"congestion_class":sev,
+        "note":"Mapbox driving-traffic nearby corridor evidence; route-level evidence only, not direct point speed."}, None
+    cat="rate_limited" if r.status_code==429 else "authentication_or_entitlement_failure" if r.status_code in (401,403) else "route_evidence_unavailable"
+    return None, {"provider":"Mapbox Directions API","category":cat,"retryable":False,"http_status":r.status_code}
+
 def _central_alt_url():
     return os.environ.get("ITICAS_ALT_TRAFFIC_URL","").strip()
 
@@ -444,6 +478,17 @@ async def provider_traffic_evaluate(x: ProviderTrafficRequest):
             "provenance":{"broker":"ITICAS Central Provider Broker","credential_exposed":False,"direct_point_speed":False,"evidence_type":"traffic_aware_route"},
         }
 
+    mapbox_evidence,mapbox_diag=await _mapbox_route_proxy(x.latitude,x.longitude,x.radius_m)
+    if mapbox_diag: attempts.append(mapbox_diag)
+    if mapbox_evidence:
+        return {"status":"route_evidence_available","provider":"Mapbox Directions API","live_provider":"Mapbox Directions API",
+        "live_observation":None,"route_evidence":mapbox_evidence,"incidents":[],"incident_count":0,
+        "message":"Mapbox driving-traffic route evidence is available for a nearby corridor.",
+        "validation":{"validation_status":"traffic_aware_route_evidence","independence_level":"provider_reference",
+        "limitations":"Route-level nearby-corridor evidence; not direct point speed."},
+        "provider_diagnostics":{"attempts":attempts},
+        "provenance":{"broker":"ITICAS Central Provider Broker","credential_exposed":False,"direct_point_speed":False,"evidence_type":"traffic_aware_route"}}
+
     flow2,diag2=await _alternate_flow(x.latitude,x.longitude,x.radius_m)
     if diag2: attempts.append(diag2)
     if flow2:
@@ -482,6 +527,8 @@ async def provider_status():
         "tomtom_configured":bool(_central_tomtom_credentials()),
         "tomtom_credential_count":len(_central_tomtom_credentials()),
         "tomtom_credential_aliases":[x[0] for x in _central_tomtom_credentials()],
+        "mapbox_configured":bool(_central_mapbox_token()),
+        "mapbox_traffic_routing_available":bool(_central_mapbox_token()),
         "alternate_provider_configured":bool(_central_alt_url()),
         "credential_exposed":False,
     }
