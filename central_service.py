@@ -520,6 +520,15 @@ async def provider_traffic_evaluate(x: ProviderTrafficRequest):
         "provenance":{"broker":"ITICAS Central Provider Broker","credential_exposed":False},
     }
 
+
+@app.get("/api/provider/qualification/mapbox")
+async def provider_mapbox_qualification(latitude: float = 7.353028, longitude: float = 3.889934, radius_m: float = 1500):
+    evidence, diagnostic = await _mapbox_route_proxy(latitude, longitude, radius_m)
+    configured = bool(_central_mapbox_token())
+    if evidence:
+        return {"status":"pass","provider":"Mapbox Directions API","mapbox_configured":configured,"traffic_routing_operational":True,"route_evidence":evidence,"credential_exposed":False}
+    return {"status":"fail","provider":"Mapbox Directions API","mapbox_configured":configured,"traffic_routing_operational":False,"diagnostic":diagnostic,"credential_exposed":False}
+
 @app.get("/api/provider/status")
 async def provider_status():
     return {
