@@ -324,6 +324,70 @@ async def _tomtom_flow(latitude, longitude):
         return None, {"provider":"TomTom Traffic API","category":"provider_http_error","message":f"TomTom returned HTTP {r.status_code}.","retryable":r.status_code>=500,"http_status":r.status_code}
     return None, {"provider":"TomTom Traffic API","category":"live_provider_unavailable","message":"TomTom live flow is unavailable.","retryable":False}
 
+async def _tomtom_route_proxy(latitude, longitude, radius_m):
+    """Traffic-aware local-corridor evidence. This is NOT direct point speed."""
+    import httpx, math
+    creds=_central_tomtom_credentials()
+    if not creds:
+        return None, {"provider":"TomTom Routing API","category":"provider_not_configured","message":"Server-side TomTom credential is not configured.","retryable":False}
+    # Build a short east-west corridor centred on the selected point. TomTom routing
+    # snaps endpoints to the routable network. The result is explicitly labelled
+    # a nearby corridor proxy, never a direct measurement at the clicked point.
+    lat=float(latitude); lon=float(longitude)
+    half=max(250.0,min(750.0,float(radius_m)/2.0))
+    coslat=max(0.2,abs(math.cos(math.radians(lat))))
+    dlon=half/(111320.0*coslat)
+    a=(lat,lon-dlon); b=(lat,lon+dlon)
+    url=f"https://api.tomtom.com/routing/1/calculateRoute/{a[0]:.7f},{a[1]:.7f}:{b[0]:.7f},{b[1]:.7f}/json"
+    for index,(alias,key) in enumerate(creds):
+        try:
+            async with httpx.AsyncClient(timeout=25.0) as client:
+                r=await client.get(url,params={"key":key,"traffic":"true","travelMode":"car","routeType":"fastest","computeTravelTimeFor":"all","routeRepresentation":"summaryOnly"},headers={"Accept":"application/json"})
+        except httpx.HTTPError:
+            return None, {"provider":"TomTom Routing API","category":"route_network_failure","message":"TomTom traffic-aware routing could not be reached.","retryable":True}
+        low=(r.text or "").lower()
+        if r.status_code==200:
+            try: summary=((r.json().get("routes") or [{}])[0].get("summary") or {})
+            except Exception: summary={}
+            tt=summary.get("travelTimeInSeconds"); nt=summary.get("noTrafficTravelTimeInSeconds")
+            if not summary or tt is None:
+                return None, {"provider":"TomTom Routing API","category":"route_evidence_unavailable","message":"TomTom returned no usable traffic-aware route evidence for the nearby corridor.","retryable":False}
+            tti=(float(tt)/float(nt)) if nt not in (None,0) else None
+            if tti is None: severity="unknown"
+            elif tti<1.10: severity="free_flow_or_low"
+            elif tti<1.25: severity="moderate"
+            elif tti<1.50: severity="heavy"
+            else: severity="severe"
+            return {
+                "provider":"TomTom Routing API",
+                "evidence_type":"traffic_aware_route",
+                "direct_point_speed":False,
+                "proxy_type":"nearby_corridor_route_proxy",
+                "route_length_m":summary.get("lengthInMeters"),
+                "travel_time_seconds":tt,
+                "no_traffic_travel_time_seconds":nt,
+                "historic_traffic_travel_time_seconds":summary.get("historicTrafficTravelTimeInSeconds"),
+                "live_traffic_incidents_travel_time_seconds":summary.get("liveTrafficIncidentsTravelTimeInSeconds"),
+                "traffic_delay_seconds":summary.get("trafficDelayInSeconds"),
+                "traffic_length_m":summary.get("trafficLengthInMeters"),
+                "travel_time_index":round(tti,4) if tti is not None else None,
+                "congestion_class":severity,
+                "corridor_start":{"latitude":a[0],"longitude":a[1]},
+                "corridor_end":{"latitude":b[0],"longitude":b[1]},
+                "note":"Nearby traffic-aware corridor proxy; route-level evidence only. It is not a direct point-speed measurement and must not be displayed as one."
+            },None
+        if r.status_code==429:
+            return None, {"provider":"TomTom Routing API","category":"rate_limited","message":"TomTom routing rate limit reached.","retryable":True,"http_status":429}
+        if r.status_code==403 and any(x in low for x in ("insufficientfunds","enough credits","insufficient funds","quota")):
+            return None, {"provider":"TomTom Routing API","category":"provider_credit_exhausted","message":"TomTom routing quota/credits are exhausted.","retryable":False,"http_status":403}
+        if r.status_code==400:
+            return None, {"provider":"TomTom Routing API","category":"route_evidence_unavailable","message":"TomTom could not construct the nearby traffic-aware corridor route.","retryable":False,"http_status":400}
+        if r.status_code in (401,403):
+            if index+1 < len(creds): continue
+            return None, {"provider":"TomTom Routing API","credential_alias":alias,"category":"authentication_or_entitlement_failure","message":"TomTom rejected the configured routing credential.","retryable":False,"http_status":r.status_code}
+        return None, {"provider":"TomTom Routing API","category":"provider_http_error","message":f"TomTom routing returned HTTP {r.status_code}.","retryable":r.status_code>=500,"http_status":r.status_code}
+    return None, {"provider":"TomTom Routing API","category":"route_evidence_unavailable","message":"Traffic-aware route evidence is unavailable.","retryable":False}
+
 async def _alternate_flow(latitude,longitude,radius_m):
     import httpx
     url=_central_alt_url()
@@ -363,6 +427,23 @@ async def provider_traffic_evaluate(x: ProviderTrafficRequest):
             "provider_diagnostics":{"attempts":attempts},
             "provenance":{"broker":"ITICAS Central Provider Broker","credential_exposed":False},
         }
+    route_evidence,route_diag=await _tomtom_route_proxy(x.latitude,x.longitude,x.radius_m)
+    if route_diag: attempts.append(route_diag)
+    if route_evidence:
+        return {
+            "status":"route_evidence_available",
+            "provider":"TomTom Routing API",
+            "live_provider":"TomTom Routing API",
+            "live_observation":None,
+            "route_evidence":route_evidence,
+            "incidents":[],
+            "incident_count":0,
+            "message":"Direct point Flow is unavailable here; current traffic-aware route evidence is available for a nearby corridor.",
+            "validation":{"validation_status":"traffic_aware_route_evidence","independence_level":"provider_reference","limitations":"Route-level traffic evidence is a nearby corridor proxy. It is not a direct point-speed measurement; ITICAS does not convert it into a point speed."},
+            "provider_diagnostics":{"attempts":attempts},
+            "provenance":{"broker":"ITICAS Central Provider Broker","credential_exposed":False,"direct_point_speed":False,"evidence_type":"traffic_aware_route"},
+        }
+
     flow2,diag2=await _alternate_flow(x.latitude,x.longitude,x.radius_m)
     if diag2: attempts.append(diag2)
     if flow2:
@@ -380,6 +461,8 @@ async def provider_traffic_evaluate(x: ProviderTrafficRequest):
     category="live_provider_unavailable"
     if any(a.get("category")=="provider_credit_exhausted" for a in attempts):
         category="live_provider_credit_exhausted"
+    elif any(a.get("category")=="flow_unavailable_for_request" for a in attempts):
+        category="live_flow_unavailable_for_location"
     return {
         "status":category,
         "provider":"ITICAS Central Provider Broker",
@@ -387,7 +470,7 @@ async def provider_traffic_evaluate(x: ProviderTrafficRequest):
         "live_observation":None,
         "incidents":[],
         "incident_count":0,
-        "message":"No live traffic provider is currently available.",
+        "message":"No direct live Flow or traffic-aware route evidence is currently available for this location.",
         "provider_diagnostics":{"attempts":attempts},
         "provenance":{"broker":"ITICAS Central Provider Broker","credential_exposed":False},
     }
